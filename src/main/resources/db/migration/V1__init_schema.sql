@@ -1,226 +1,357 @@
--- ========================================================================================
--- MIGRATION FILE: V1__init_schema.sql
--- ARCHITECT: Big Moreno
--- ENGINE: PostgreSQL 15 (Flyway Ready)
--- DOMAIN: Lezzat Frozen Food (B2B & B2C)
--- CORE LOGIC: Auto-Tiering Price (B2B) & FEFO Inventory (Batch-based Expiry)
--- ========================================================================================
+--
+-- PostgreSQL database dump
+--
 
--- ----------------------------------------------------------------------------------------
--- [0] AUTOMATION: UPDATED_AT TRIGGER
--- Memastikan kolom updated_at otomatis disuntik oleh mesin PostgreSQL setiap ada operasi UPDATE.
--- ----------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION trigger_set_tiimestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = CURRENT_TIMESTAMP;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+\restrict fMGEu86FbWTvZPf1lwFn02FZMuNSPPSJMaWd7lDfg0x3d4M7bcEd0whUYyKGuco
 
--- ----------------------------------------------------------------------------------------
--- [1] TABLE: customers
--- Master data pengguna.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE customers (
-    id_user UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    nama VARCHAR(150) NOT NULL,
-    email VARCHAR(150) NOT NULL UNIQUE,
-    no_telp VARCHAR(25) NOT NULL,
-    alamat TEXT NOT NULL,
-    tipe_akun VARCHAR(20) NOT NULL CHECK (tipe_akun IN ('B2C', 'B2B', 'ADMIN')),
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE NULL
+-- Dumped from database version 18.6
+-- Dumped by pg_dump version 18.6
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: customers; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.customers (
+    id_user uuid NOT NULL,
+    alamat text NOT NULL,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    email character varying(150) NOT NULL,
+    is_active boolean NOT NULL,
+    nama character varying(150) NOT NULL,
+    no_telp character varying(25) NOT NULL,
+    tipe_akun character varying(20) NOT NULL,
+    updated_at timestamp(6) without time zone
 );
 
-CREATE TRIGGER set_timestamp_customers
-BEFORE UPDATE ON customers
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [2] TABLE: products
--- Master data katalog produk beku.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE products (
-    id_produk UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    nama_produk VARCHAR(200) NOT NULL,
-    deskripsi_produk TEXT,
-    kategori VARCHAR(100) NOT NULL,
-    harga_eceran NUMERIC(15, 2) NOT NULL CHECK (harga_eceran >= 0),
-    berat DECIMAL(10, 2) NOT NULL CHECK (berat > 0),
-    volume DECIMAL(10, 2),
-    gambar TEXT,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE NULL
+ALTER TABLE public.customers OWNER TO admin_b2b;
+
+--
+-- Name: deliveries; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.deliveries (
+    id_delivery uuid NOT NULL,
+    alamat_tujuan character varying(255),
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    jarak real,
+    metode_deliv character varying(255),
+    status_delivery character varying(255),
+    updated_at timestamp(6) without time zone,
+    id_order uuid
 );
 
-CREATE TRIGGER set_timestamp_products
-BEFORE UPDATE ON products
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [3] TABLE: tiering_prices
--- Logika B2B: Harga khusus berdasarkan kuantitas beli.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE tiering_prices (
-    id_tiering UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_produk UUID NOT NULL,
-    min_qty INT NOT NULL CHECK (min_qty > 0),
-    max_qty INT NOT NULL CHECK (max_qty >= min_qty),
-    harga_per_unit NUMERIC(15, 2) NOT NULL CHECK (harga_per_unit >= 0),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE NULL,
-    CONSTRAINT fk_tiering_produk FOREIGN KEY (id_produk) 
-        REFERENCES products (id_produk) ON DELETE RESTRICT
+ALTER TABLE public.deliveries OWNER TO admin_b2b;
+
+--
+-- Name: expiry_alerts; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.expiry_alerts (
+    id_alert uuid NOT NULL,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    hari_sebelum integer,
+    is_sent boolean,
+    send_at timestamp(6) without time zone,
+    updated_at timestamp(6) without time zone,
+    id_prod_batch uuid
 );
 
-CREATE TRIGGER set_timestamp_tiering_prices
-BEFORE UPDATE ON tiering_prices
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [4] TABLE: produk_batches
--- Jantung logika FEFO. Stok dipisah berdasarkan tanggal kedaluwarsa.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE produk_batches (
-    id_prod_batch UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_produk UUID NOT NULL,
-    stok_awal INT NOT NULL CHECK (stok_awal >= 0),
-    stok_online INT NOT NULL CHECK (stok_online >= 0 AND stok_online <= stok_awal),
-    tanggal_exp DATE NOT NULL,
-    harga_override NUMERIC(15, 2) CHECK (harga_override >= 0),
-    diskon NUMERIC(5, 2) CHECK (diskon >= 0 AND diskon <= 100),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE NULL,
-    CONSTRAINT fk_batch_produk FOREIGN KEY (id_produk) 
-        REFERENCES products (id_produk) ON DELETE RESTRICT
+ALTER TABLE public.expiry_alerts OWNER TO admin_b2b;
+
+--
+-- Name: order_items; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.order_items (
+    id_order_item uuid NOT NULL,
+    harga_satuan numeric(15,2) NOT NULL,
+    quantity integer NOT NULL,
+    subtotal_item numeric(15,2) NOT NULL,
+    id_order uuid NOT NULL,
+    id_prod_batch uuid NOT NULL
 );
 
-CREATE TRIGGER set_timestamp_produk_batches
-BEFORE UPDATE ON produk_batches
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [5] TABLE: expiry_alerts
--- Sistem notifikasi dini sebelum batch kedaluwarsa.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE expiry_alerts (
-    id_expiry UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_prod_batch UUID NOT NULL,
-    hari_sebelum INT NOT NULL CHECK (hari_sebelum > 0),
-    send_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_alert_batch FOREIGN KEY (id_prod_batch) 
-        REFERENCES produk_batches (id_prod_batch) ON DELETE CASCADE
+ALTER TABLE public.order_items OWNER TO admin_b2b;
+
+--
+-- Name: orders; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.orders (
+    id_order uuid NOT NULL,
+    catatan text,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    ongkir numeric(15,2) NOT NULL,
+    status character varying(50) NOT NULL,
+    tipe_order character varying(20) NOT NULL,
+    total numeric(15,2) NOT NULL,
+    updated_at timestamp(6) without time zone,
+    id_user uuid NOT NULL
 );
 
-CREATE TRIGGER set_timestamp_expiry_alerts
-BEFORE UPDATE ON expiry_alerts
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [6] TABLE: orders
--- Header transaksi pelanggan.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE orders (
-    id_order UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_user UUID NOT NULL,
-    tipe_order VARCHAR(50) NOT NULL CHECK (tipe_order IN ('B2C', 'B2B')),
-    status VARCHAR(50) NOT NULL,
-    ongkir NUMERIC(15, 2) NOT NULL DEFAULT 0 CHECK (ongkir >= 0),
-    catatan TEXT,
-    total NUMERIC(15, 2) NOT NULL CHECK (total >= 0),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE NULL,
-    CONSTRAINT fk_order_user FOREIGN KEY (id_user) 
-        REFERENCES customers (id_user) ON DELETE RESTRICT
+ALTER TABLE public.orders OWNER TO admin_b2b;
+
+--
+-- Name: payments; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.payments (
+    id_payment uuid NOT NULL,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    expired_at timestamp(6) without time zone,
+    gateway_ref character varying(255),
+    jumlah numeric(38,2),
+    metode_pay character varying(255),
+    paid_at timestamp(6) without time zone,
+    status character varying(255),
+    updated_at timestamp(6) without time zone,
+    id_order uuid
 );
 
-CREATE TRIGGER set_timestamp_orders
-BEFORE UPDATE ON orders
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [7] TABLE: order_items
--- Detail transaksi (mengikat langsung ke id_prod_batch demi akurasi potong stok FEFO).
--- ----------------------------------------------------------------------------------------
-CREATE TABLE order_items (
-    id_order_item UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_order UUID NOT NULL,
-    id_prod_batch UUID NOT NULL,
-    qty INT NOT NULL CHECK (qty > 0),
-    harga_satuan_snapshot NUMERIC(15, 2) NOT NULL CHECK (harga_satuan_snapshot >= 0),
-    subtotal_item NUMERIC(15, 2) NOT NULL CHECK (subtotal_item >= 0),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_item_order FOREIGN KEY (id_order) 
-        REFERENCES orders (id_order) ON DELETE RESTRICT,
-    CONSTRAINT fk_item_order FOREIGN KEY (id_order) 
-    REFERENCES orders (id_order) ON DELETE CASCADE,
+ALTER TABLE public.payments OWNER TO admin_b2b;
+
+--
+-- Name: products; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.products (
+    id_produk uuid NOT NULL,
+    berat numeric(10,2) NOT NULL,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    deskripsi_produk text,
+    gambar text,
+    harga_eceran numeric(15,2) NOT NULL,
+    is_active boolean NOT NULL,
+    kategori character varying(100) NOT NULL,
+    nama_produk character varying(200) NOT NULL,
+    updated_at timestamp(6) without time zone,
+    volume numeric(10,2)
 );
 
-CREATE TRIGGER set_timestamp_order_items
-BEFORE UPDATE ON order_items
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [8] TABLE: payments
--- Rekaman riwayat pembayaran (Payment Gateway integration).
--- ----------------------------------------------------------------------------------------
-CREATE TABLE payments (
-    id_payment UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_order UUID NOT NULL UNIQUE,
-    metode_pay VARCHAR(100) NOT NULL,
-    gateway_ref VARCHAR(255),
-    jumlah NUMERIC(15, 2) NOT NULL CHECK (jumlah > 0),
-    status VARCHAR(50) NOT NULL,
-    expired_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    paid_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_payment_order FOREIGN KEY (id_order) 
-        REFERENCES orders (id_order) ON DELETE RESTRICT
+ALTER TABLE public.products OWNER TO admin_b2b;
+
+--
+-- Name: produk_batches; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.produk_batches (
+    id_prod_batch uuid NOT NULL,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    diskon numeric(5,2),
+    harga_override numeric(15,2),
+    stok_awal integer NOT NULL,
+    stok_online integer NOT NULL,
+    tanggal_exp date NOT NULL,
+    updated_at timestamp(6) without time zone,
+    id_produk uuid NOT NULL
 );
 
-CREATE TRIGGER set_timestamp_payments
-BEFORE UPDATE ON payments
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ----------------------------------------------------------------------------------------
--- [9] TABLE: deliveries
--- Rekaman resi dan pengiriman.
--- ----------------------------------------------------------------------------------------
-CREATE TABLE deliveries (
-    id_deliv UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_order UUID NOT NULL UNIQUE,
-    metode_deliv VARCHAR(100) NOT NULL,
-    alamat_tujuan TEXT NOT NULL,
-    jarak DECIMAL(10, 2),
-    status_delivery VARCHAR(50) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_delivery_order FOREIGN KEY (id_order) 
-        REFERENCES orders (id_order) ON DELETE RESTRICT
+ALTER TABLE public.produk_batches OWNER TO admin_b2b;
+
+--
+-- Name: tiering_prices; Type: TABLE; Schema: public; Owner: admin_b2b
+--
+
+CREATE TABLE public.tiering_prices (
+    id_tiering uuid NOT NULL,
+    created_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    harga_per_unit numeric(15,2) NOT NULL,
+    max_qty integer NOT NULL,
+    min_qty integer NOT NULL,
+    updated_at timestamp(6) without time zone,
+    id_produk uuid NOT NULL
 );
 
-CREATE TRIGGER set_timestamp_deliveries
-BEFORE UPDATE ON deliveries
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
--- ========================================================================================
--- INDEXING UNTUK OPTIMASI QUERY (Enterprise Standard)
--- ========================================================================================
-CREATE INDEX idx_orders_id_user ON orders(id_user);
-CREATE INDEX idx_order_items_id_order ON order_items(id_order);
-CREATE INDEX idx_order_items_id_prod_batch ON order_items(id_prod_batch);
-CREATE INDEX idx_produk_batches_id_produk ON produk_batches(id_produk);
-CREATE INDEX idx_tiering_prices_id_produk ON tiering_prices(id_produk);
-CREATE INDEX idx_produk_batches_tanggal_exp ON produk_batches(tanggal_exp ASC);
+ALTER TABLE public.tiering_prices OWNER TO admin_b2b;
+
+--
+-- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id_user);
+
+
+--
+-- Name: deliveries deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.deliveries
+    ADD CONSTRAINT deliveries_pkey PRIMARY KEY (id_delivery);
+
+
+--
+-- Name: expiry_alerts expiry_alerts_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.expiry_alerts
+    ADD CONSTRAINT expiry_alerts_pkey PRIMARY KEY (id_alert);
+
+
+--
+-- Name: order_items order_items_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT order_items_pkey PRIMARY KEY (id_order_item);
+
+
+--
+-- Name: orders orders_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT orders_pkey PRIMARY KEY (id_order);
+
+
+--
+-- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_pkey PRIMARY KEY (id_payment);
+
+
+--
+-- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_pkey PRIMARY KEY (id_produk);
+
+
+--
+-- Name: produk_batches produk_batches_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.produk_batches
+    ADD CONSTRAINT produk_batches_pkey PRIMARY KEY (id_prod_batch);
+
+
+--
+-- Name: tiering_prices tiering_prices_pkey; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.tiering_prices
+    ADD CONSTRAINT tiering_prices_pkey PRIMARY KEY (id_tiering);
+
+
+--
+-- Name: deliveries uke1wnounk8qmqwmoqvapvau14l; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.deliveries
+    ADD CONSTRAINT uke1wnounk8qmqwmoqvapvau14l UNIQUE (id_order);
+
+
+--
+-- Name: customers ukrfbvkrffamfql7cjmen8v976v; Type: CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT ukrfbvkrffamfql7cjmen8v976v UNIQUE (email);
+
+
+--
+-- Name: order_items fk463h4eo5sqsq08idtys04dh2q; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT fk463h4eo5sqsq08idtys04dh2q FOREIGN KEY (id_prod_batch) REFERENCES public.produk_batches(id_prod_batch);
+
+
+--
+-- Name: payments fkalvupkbf37ax1kxiayasm8k1x; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT fkalvupkbf37ax1kxiayasm8k1x FOREIGN KEY (id_order) REFERENCES public.orders(id_order);
+
+
+--
+-- Name: produk_batches fkc4hxwb92wdpexw41pac6igqq5; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.produk_batches
+    ADD CONSTRAINT fkc4hxwb92wdpexw41pac6igqq5 FOREIGN KEY (id_produk) REFERENCES public.products(id_produk);
+
+
+--
+-- Name: tiering_prices fkcayjxei9npv7b7k46kecjwf89; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.tiering_prices
+    ADD CONSTRAINT fkcayjxei9npv7b7k46kecjwf89 FOREIGN KEY (id_produk) REFERENCES public.products(id_produk);
+
+
+--
+-- Name: expiry_alerts fkh8wg7ktqptcenmsgj1lulr5r9; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.expiry_alerts
+    ADD CONSTRAINT fkh8wg7ktqptcenmsgj1lulr5r9 FOREIGN KEY (id_prod_batch) REFERENCES public.produk_batches(id_prod_batch);
+
+
+--
+-- Name: orders fkhvayjmb9hervngxqi60fsuv4s; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fkhvayjmb9hervngxqi60fsuv4s FOREIGN KEY (id_user) REFERENCES public.customers(id_user);
+
+
+--
+-- Name: deliveries fkicdv5oep7ix7gerw8kp3kkrg5; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.deliveries
+    ADD CONSTRAINT fkicdv5oep7ix7gerw8kp3kkrg5 FOREIGN KEY (id_order) REFERENCES public.orders(id_order);
+
+
+--
+-- Name: order_items fkj18ef1agdhkb3f8rmgrrgdbvu; Type: FK CONSTRAINT; Schema: public; Owner: admin_b2b
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT fkj18ef1agdhkb3f8rmgrrgdbvu FOREIGN KEY (id_order) REFERENCES public.orders(id_order);
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict fMGEu86FbWTvZPf1lwFn02FZMuNSPPSJMaWd7lDfg0x3d4M7bcEd0whUYyKGuco
+
