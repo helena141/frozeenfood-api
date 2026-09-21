@@ -10,7 +10,7 @@
 -- [0] AUTOMATION: UPDATED_AT TRIGGER
 -- Memastikan kolom updated_at otomatis disuntik oleh mesin PostgreSQL setiap ada operasi UPDATE.
 -- ----------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION trigger_set_tiimestamp()
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = CURRENT_TIMESTAMP;
@@ -23,13 +23,15 @@ $$ LANGUAGE plpgsql;
 -- Master data pengguna.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE customers (
-    id_user UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_user UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     nama VARCHAR(150) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     no_telp VARCHAR(25) NOT NULL,
     alamat TEXT NOT NULL,
-    tipe_akun VARCHAR(20) NOT NULL CHECK (tipe_akun IN ('B2C', 'B2B', 'ADMIN')),
+    tipe_akun VARCHAR(20) NOT NULL CHECK (
+        tipe_akun IN ('B2C', 'B2B', 'ADMIN')
+    ),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -45,7 +47,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Master data katalog produk beku.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE products (
-    id_produk UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_produk UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     nama_produk VARCHAR(200) NOT NULL,
     deskripsi_produk TEXT,
     kategori VARCHAR(100) NOT NULL,
@@ -68,7 +70,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Logika B2B: Harga khusus berdasarkan kuantitas beli.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE tiering_prices (
-    id_tiering UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_tiering UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_produk UUID NOT NULL,
     min_qty INT NOT NULL CHECK (min_qty > 0),
     max_qty INT NOT NULL CHECK (max_qty >= min_qty),
@@ -76,8 +78,7 @@ CREATE TABLE tiering_prices (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE NULL,
-    CONSTRAINT fk_tiering_produk FOREIGN KEY (id_produk) 
-        REFERENCES products (id_produk) ON DELETE RESTRICT
+    CONSTRAINT fk_tiering_produk FOREIGN KEY (id_produk) REFERENCES products (id_produk) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER set_timestamp_tiering_prices
@@ -89,18 +90,23 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Jantung logika FEFO. Stok dipisah berdasarkan tanggal kedaluwarsa.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE produk_batches (
-    id_prod_batch UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_prod_batch UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_produk UUID NOT NULL,
     stok_awal INT NOT NULL CHECK (stok_awal >= 0),
-    stok_online INT NOT NULL CHECK (stok_online >= 0 AND stok_online <= stok_awal),
+    stok_online INT NOT NULL CHECK (
+        stok_online >= 0
+        AND stok_online <= stok_awal
+    ),
     tanggal_exp DATE NOT NULL,
     harga_override NUMERIC(15, 2) CHECK (harga_override >= 0),
-    diskon NUMERIC(5, 2) CHECK (diskon >= 0 AND diskon <= 100),
+    diskon NUMERIC(5, 2) CHECK (
+        diskon >= 0
+        AND diskon <= 100
+    ),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE NULL,
-    CONSTRAINT fk_batch_produk FOREIGN KEY (id_produk) 
-        REFERENCES products (id_produk) ON DELETE RESTRICT
+    CONSTRAINT fk_batch_produk FOREIGN KEY (id_produk) REFERENCES products (id_produk) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER set_timestamp_produk_batches
@@ -112,14 +118,13 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Sistem notifikasi dini sebelum batch kedaluwarsa.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE expiry_alerts (
-    id_expiry UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_expiry UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_prod_batch UUID NOT NULL,
     hari_sebelum INT NOT NULL CHECK (hari_sebelum > 0),
     send_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_alert_batch FOREIGN KEY (id_prod_batch) 
-        REFERENCES produk_batches (id_prod_batch) ON DELETE CASCADE
+    CONSTRAINT fk_alert_batch FOREIGN KEY (id_prod_batch) REFERENCES produk_batches (id_prod_batch) ON DELETE CASCADE
 );
 
 CREATE TRIGGER set_timestamp_expiry_alerts
@@ -131,7 +136,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Header transaksi pelanggan.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE orders (
-    id_order UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_order UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_user UUID NOT NULL,
     tipe_order VARCHAR(50) NOT NULL CHECK (tipe_order IN ('B2C', 'B2B')),
     status VARCHAR(50) NOT NULL,
@@ -141,8 +146,7 @@ CREATE TABLE orders (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE NULL,
-    CONSTRAINT fk_order_user FOREIGN KEY (id_user) 
-        REFERENCES customers (id_user) ON DELETE RESTRICT
+    CONSTRAINT fk_order_user FOREIGN KEY (id_user) REFERENCES customers (id_user) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER set_timestamp_orders
@@ -154,7 +158,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Detail transaksi (mengikat langsung ke id_prod_batch demi akurasi potong stok FEFO).
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE order_items (
-    id_order_item UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_order_item UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_order UUID NOT NULL,
     id_prod_batch UUID NOT NULL,
     qty INT NOT NULL CHECK (qty > 0),
@@ -162,10 +166,8 @@ CREATE TABLE order_items (
     subtotal_item NUMERIC(15, 2) NOT NULL CHECK (subtotal_item >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_item_order FOREIGN KEY (id_order) 
-        REFERENCES orders (id_order) ON DELETE RESTRICT,
-    CONSTRAINT fk_item_order FOREIGN KEY (id_order) 
-    REFERENCES orders (id_order) ON DELETE CASCADE,
+    CONSTRAINT fk_item_order FOREIGN KEY (id_order) REFERENCES orders (id_order) ON DELETE CASCADE,
+    CONSTRAINT fk_item_batch FOREIGN KEY (id_prod_batch) REFERENCES produk_batches (id_prod_batch) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER set_timestamp_order_items
@@ -177,7 +179,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Rekaman riwayat pembayaran (Payment Gateway integration).
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE payments (
-    id_payment UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_payment UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_order UUID NOT NULL UNIQUE,
     metode_pay VARCHAR(100) NOT NULL,
     gateway_ref VARCHAR(255),
@@ -187,8 +189,7 @@ CREATE TABLE payments (
     paid_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_payment_order FOREIGN KEY (id_order) 
-        REFERENCES orders (id_order) ON DELETE RESTRICT
+    CONSTRAINT fk_payment_order FOREIGN KEY (id_order) REFERENCES orders (id_order) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER set_timestamp_payments
@@ -200,7 +201,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Rekaman resi dan pengiriman.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE deliveries (
-    id_deliv UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_deliv UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_order UUID NOT NULL UNIQUE,
     metode_deliv VARCHAR(100) NOT NULL,
     alamat_tujuan TEXT NOT NULL,
@@ -208,8 +209,7 @@ CREATE TABLE deliveries (
     status_delivery VARCHAR(50) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_delivery_order FOREIGN KEY (id_order) 
-        REFERENCES orders (id_order) ON DELETE RESTRICT
+    CONSTRAINT fk_delivery_order FOREIGN KEY (id_order) REFERENCES orders (id_order) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER set_timestamp_deliveries
@@ -219,9 +219,14 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- ========================================================================================
 -- INDEXING UNTUK OPTIMASI QUERY (Enterprise Standard)
 -- ========================================================================================
-CREATE INDEX idx_orders_id_user ON orders(id_user);
-CREATE INDEX idx_order_items_id_order ON order_items(id_order);
-CREATE INDEX idx_order_items_id_prod_batch ON order_items(id_prod_batch);
-CREATE INDEX idx_produk_batches_id_produk ON produk_batches(id_produk);
-CREATE INDEX idx_tiering_prices_id_produk ON tiering_prices(id_produk);
-CREATE INDEX idx_produk_batches_tanggal_exp ON produk_batches(tanggal_exp ASC);
+CREATE INDEX idx_orders_id_user ON orders (id_user);
+
+CREATE INDEX idx_order_items_id_order ON order_items (id_order);
+
+CREATE INDEX idx_order_items_id_prod_batch ON order_items (id_prod_batch);
+
+CREATE INDEX idx_produk_batches_id_produk ON produk_batches (id_produk);
+
+CREATE INDEX idx_tiering_prices_id_produk ON tiering_prices (id_produk);
+
+CREATE INDEX idx_produk_batches_tanggal_exp ON produk_batches (tanggal_exp ASC);
