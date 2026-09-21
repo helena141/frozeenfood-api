@@ -62,4 +62,7 @@ public class Customer {
 
     @Column(name = "deleted_at", insertable = false, updatable = false)
     private LocalDateTime deletedAt;
+    
+    @Column(name = "password", nullable = false, length = 255)
+    private String password;
 }
