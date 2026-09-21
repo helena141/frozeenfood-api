@@ -23,7 +23,11 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "payments")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @SQLDelete(sql = "UPDATE payments SET deleted_at = CURRENT_TIMESTAMP WHERE id_payment = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class Payment {
@@ -32,7 +36,7 @@ public class Payment {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID idPayment;
 
- @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_order")
     private Order order;
 
