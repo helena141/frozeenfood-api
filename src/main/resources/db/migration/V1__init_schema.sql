@@ -26,6 +26,7 @@ CREATE TABLE customers (
     id_user UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     nama VARCHAR(150) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
     no_telp VARCHAR(25) NOT NULL,
     alamat TEXT NOT NULL,
     tipe_akun VARCHAR(20) NOT NULL CHECK (
