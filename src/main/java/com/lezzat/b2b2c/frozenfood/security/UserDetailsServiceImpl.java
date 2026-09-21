@@ -1,8 +1,8 @@
 package com.lezzat.b2b2c.frozenfood.security;
 
-import com.lezzat.b2b2c.frozenfood.entity.Customer;
-import com.lezzat.b2b2c.frozenfood.repository.CustomerRepository;
-import lombok.RequiredArgsConstructor;
+import java.util.Collections;
+import java.util.Set;
+
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
@@ -11,12 +11,14 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.Set;
+import com.lezzat.b2b2c.frozenfood.entity.Customer;
+import com.lezzat.b2b2c.frozenfood.repository.CustomerRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-class UserDetailsServiceImpl implements UserDetailsService {
+public class UserDetailsServiceImpl implements UserDetailsService {
 
     // Inject jalur akses database yang udah lu buat tadi
     private final CustomerRepository customerRepository;
@@ -27,8 +29,8 @@ class UserDetailsServiceImpl implements UserDetailsService {
         Customer customer = customerRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("Penyusup ditolak: Email tidak terdaftar di database - " + email));
 
-       // 2. Cek pangkat pengunjung (B2C, B2B, atau ADMIN) dan terjemahkan ke bahasa Keamanan
-        String roleName = "ROLE_" + customer.getTipeAkun().toUpperCase(); 
+        // 2. Cek pangkat pengunjung (B2C, B2B, atau ADMIN) dan terjemahkan ke bahasa Keamanan
+        String roleName = "ROLE_" + customer.getTipeAkun().toUpperCase();
         Set<GrantedAuthority> authorities = Collections.singleton(new SimpleGrantedAuthority(roleName));
 
         // 3. Cetak dan serahkan profil standar yang bisa dibaca oleh mesin Spring Security

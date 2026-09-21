@@ -17,13 +17,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * ASUMSI: OrderRepository di sini milik modul Moreno (core-b2b). DeliveryService
- * hanya BACA data Order untuk validasi id_order, tidak pernah membuat/mengubah/
- * menghapus Order.
+ * ASUMSI: OrderRepository di sini milik modul Moreno (core-b2b).
+ * DeliveryService hanya BACA data Order untuk validasi id_order, tidak pernah
+ * membuat/mengubah/ menghapus Order.
  *
  * CATATAN: entity Delivery tidak menandai createdAt/updatedAt sebagai
- * insertable=false/updatable=false (beda dari entity lain seperti Order),
- * jadi di sini diisi manual supaya tidak NULL saat disimpan.
+ * insertable=false/updatable=false (beda dari entity lain seperti Order), jadi
+ * di sini diisi manual supaya tidak NULL saat disimpan.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,7 +45,7 @@ public class DeliveryService {
 
         Order order = orderRepository.findById(request.idOrder())
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Order dengan id " + request.idOrder() + " tidak ditemukan"));
+                "Order dengan id " + request.idOrder() + " tidak ditemukan"));
 
         LocalDateTime now = LocalDateTime.now();
         Delivery delivery = Delivery.builder()
@@ -71,7 +71,7 @@ public class DeliveryService {
     public DeliveryResponse getByOrderId(UUID idOrder) {
         Delivery delivery = deliveryRepository.findByOrder_IdOrder(idOrder)
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Delivery untuk order " + idOrder + " tidak ditemukan"));
+                "Delivery untuk order " + idOrder + " tidak ditemukan"));
         return toResponse(delivery);
     }
 
@@ -86,7 +86,7 @@ public class DeliveryService {
     private Delivery findOrThrow(UUID idDelivery) {
         return deliveryRepository.findById(idDelivery)
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Delivery dengan id " + idDelivery + " tidak ditemukan"));
+                "Delivery dengan id " + idDelivery + " tidak ditemukan"));
     }
 
     private DeliveryResponse toResponse(Delivery delivery) {
