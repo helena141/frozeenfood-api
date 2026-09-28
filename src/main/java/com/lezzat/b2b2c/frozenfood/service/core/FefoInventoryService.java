@@ -1,4 +1,4 @@
-package com.lezzat.b2b2c.frozenfood.service;
+package com.lezzat.b2b2c.frozenfood.service.core;
 
 import com.lezzat.b2b2c.frozenfood.entity.ProductBatch;
 import com.lezzat.b2b2c.frozenfood.repository.ProductBatchRepository;
@@ -26,7 +26,7 @@ public class FefoInventoryService {
         
         // 1. Ambil data batch (stok online > 0) diurutkan dari yang paling cepat kedaluwarsa
         List<ProductBatch> availableBatches = productBatchRepository
-                .findByProductIdAndStokOnlineGreaterThanOrderByTanggalExpAsc(productId, 0);
+               .findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(productId, 0);
 
         // 2. Cek apakah total stok di gudang mencukupi permintaan
         int totalAvailableStock = availableBatches.stream()
