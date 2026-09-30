@@ -1,16 +1,24 @@
 package com.lezzat.b2b2c.frozenfood.repository;
 
-// SEMENTARA — file ini bukan tanggung jawab Krisna, melainkan Moreno
-// (modul core-b2b, pemegang penuh Order/TieringPrice/ExpiryAlert/Auth).
-// Dibuat minimal di sini cuma supaya DeliveryService & PaymentService bisa
-// dicompile dan dites sendiri lebih dulu. GANTI/gabungkan dengan
-// OrderRepository asli buatan Moreno sebelum merge — terutama kalau dia
-// sudah menambahkan custom query method lain di situ.
-
-import com.lezzat.b2b2c.frozenfood.entity.Order;
-import org.springframework.data.jpa.repository.JpaRepository;
-
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.lezzat.b2b2c.frozenfood.entity.Order;
+
 public interface OrderRepository extends JpaRepository<Order, UUID> {
+
+// List<Order> findByCustomerId(UUID customerId);
+
+
+    List<Order> findByCustomerIdUser(UUID idUser);
+
+
+    // JOIN FETCH untuk menghindari N+1 Query saat membaca detail barang
+    @Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.idOrder = :orderId")
+    Optional<Order> findByIdWithItems(@Param("orderId") UUID orderId);
 }
