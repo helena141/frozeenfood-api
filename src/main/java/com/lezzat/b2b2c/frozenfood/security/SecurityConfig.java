@@ -52,6 +52,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Zona Hibrid: B2B dan B2C bisa melihat katalog produk (GET)
                 .requestMatchers("/api/products/**").permitAll()
+                .requestMatchers("/error").permitAll()
                 // Default Hukum Sapu Jagat: Sisa endpoint lainnya WAJIB bawa Token JWT
                 .anyRequest().authenticated()
                 )

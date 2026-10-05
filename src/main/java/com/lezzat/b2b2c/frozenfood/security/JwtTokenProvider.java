@@ -1,14 +1,17 @@
 package com.lezzat.b2b2c.frozenfood.security;
 
-import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+
+import javax.crypto.SecretKey;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 @Component
 public class JwtTokenProvider {
@@ -25,13 +28,18 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(Authentication authentication) {
+   public String generateToken(Authentication authentication) {
         String username = authentication.getName();
+        
+        // Ekstrak Role B2B/B2C saat login
+        String role = authentication.getAuthorities().iterator().next().getAuthority();
+
         Date currentDate = new Date();
         Date expireDate = new Date(currentDate.getTime() + jwtExpirationDate);
 
         return Jwts.builder()
                 .subject(username)
+                .claim("role", role) // INJEKSI MUTLAK: Role sekarang tertanam di dalam token!
                 .issuedAt(new Date())
                 .expiration(expireDate)
                 .signWith(key())
