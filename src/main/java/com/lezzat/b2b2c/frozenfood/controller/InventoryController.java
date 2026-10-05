@@ -1,8 +1,9 @@
 package com.lezzat.b2b2c.frozenfood.controller;
 
-import com.lezzat.b2b2c.frozenfood.service.FefoInventoryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import com.lezzat.b2b2c.frozenfood.service.core.FefoInventoryService;
 
 import java.util.Map;
 import java.util.UUID;

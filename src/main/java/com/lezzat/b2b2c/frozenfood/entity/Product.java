@@ -11,6 +11,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -71,5 +72,7 @@ public class Product {
     @Column(name = "deleted_at", insertable = false, updatable = false)
     private LocalDateTime deletedAt;
     
-    
+    // Relasi ke ProductBatch (Wajib LAZY sesuai Hukum Arsitektur)
+    @OneToMany(mappedBy = "product", fetch = jakarta.persistence.FetchType.LAZY)
+    private java.util.List<ProductBatch> productBatches;
 }
