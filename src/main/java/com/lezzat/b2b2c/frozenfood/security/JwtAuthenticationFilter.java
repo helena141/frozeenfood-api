@@ -31,32 +31,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
-            // 1. Rampas token dari HTTP Header
             String jwt = getJwtFromRequest(request);
+            
+            // SENSOR 1: Apakah token masuk ke backend?
+            System.out.println("🚨 [SATPAM] Mencoba akses: " + request.getRequestURI());
+            System.out.println("🚨 [SATPAM] Token ditangkap: " + (jwt != null ? "ADA" : "KOSONG/CACAT"));
 
-            // 2. Jika bawa token, cek keasliannya di Mesin Kriptografi
-            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-                
-                // 3. Baca nama/email dari token tersebut
-                String username = tokenProvider.getUsernameFromJWT(jwt);
+            if (StringUtils.hasText(jwt)) {
+                // SENSOR 2: Apakah kriptografinya cocok?
+                boolean isValid = tokenProvider.validateToken(jwt);
+                System.out.println("🚨 [SATPAM] Status Kriptografi Token Valid: " + isValid);
 
-                // 4. Tarik sisa profil user dari database
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                if (isValid) {
+                    String username = tokenProvider.getUsernameFromJWT(jwt);
+                    System.out.println("🚨 [SATPAM] Email dari Token: " + username);
 
-                // 5. Terbitkan Paspor Resmi Spring Security
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities());
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    // SENSOR 3: Apakah user masih ada di database?
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    System.out.println("🚨 [SATPAM] User DB Ditemukan! Otoritas: " + userDetails.getAuthorities());
 
-                // 6. Persilakan masuk (Buka Gerbang)
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            userDetails, null, userDetails.getAuthorities());
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    System.out.println("🚨 [SATPAM] BERHASIL! Pintu akses " + request.getRequestURI() + " dibuka!");
+                }
             }
         } catch (Exception ex) {
-            // Log senyap, jangan crash-kan server hanya karena 1 penyusup
-            logger.error("Gagal menetapkan autentikasi user di Security Context", ex);
+            // SENSOR 4: Kalau meledak, tampilkan error aslinya!
+            System.out.println("🚨 [SATPAM] CRASH FATAL: " + ex.getMessage());
+            ex.printStackTrace();
         }
 
-        // Lanjutkan request ke tujuan (Biar SecurityConfig yang menendang kalau context kosong)
         filterChain.doFilter(request, response);
     }
 
