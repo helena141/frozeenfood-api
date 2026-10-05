@@ -44,25 +44,20 @@ public class SecurityConfig {
         http
                 // MATIKAN CSRF: API kita menggunakan token JWT murni, bukan session berbasis browser
                 .csrf(AbstractHttpConfigurer::disable)
-                
                 // Aturan Rute (Routing Rules)
                 .authorizeHttpRequests(auth -> auth
-                        // Zona Publik: Siapapun boleh masuk (Login, Register)
-                        .requestMatchers("/api/auth/**").permitAll()
-                        
-                        // Zona Khusus: Hanya boleh diakses oleh Bony (Gudang/Admin)
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        
-                        // Zona Hibrid: B2B dan B2C bisa melihat katalog produk (GET)
-                        .requestMatchers("/api/products/**").permitAll() 
-                        
-                        // Default Hukum Sapu Jagat: Sisa endpoint lainnya WAJIB bawa Token JWT
-                        .anyRequest().authenticated()
+                // Zona Publik: Siapapun boleh masuk (Login, Register)
+                .requestMatchers("/api/auth/**").permitAll()
+                // Zona Khusus: Hanya boleh diakses oleh Bony (Gudang/Admin)
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Zona Hibrid: B2B dan B2C bisa melihat katalog produk (GET)
+                .requestMatchers("/api/products/**").permitAll()
+                .requestMatchers("/error").permitAll()
+                // Default Hukum Sapu Jagat: Sisa endpoint lainnya WAJIB bawa Token JWT
+                .anyRequest().authenticated()
                 )
-                
                 // MATIKAN SESSION: Arsitektur REST API murni tidak mengingat state (Stateless)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                
                 // TEMPATKAN SATPAM: Pasang JwtAuthenticationFilter lu tepat sebelum filter bawaan Spring
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 

@@ -1,5 +1,13 @@
 package com.lezzat.b2b2c.frozenfood.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.lezzat.b2b2c.frozenfood.dto.request.PaymentCallbackRequest;
 import com.lezzat.b2b2c.frozenfood.dto.request.PaymentRequest;
 import com.lezzat.b2b2c.frozenfood.dto.response.PaymentResponse;
@@ -7,15 +15,9 @@ import com.lezzat.b2b2c.frozenfood.entity.Order;
 import com.lezzat.b2b2c.frozenfood.entity.Payment;
 import com.lezzat.b2b2c.frozenfood.repository.OrderRepository;
 import com.lezzat.b2b2c.frozenfood.repository.PaymentRepository;
+
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * ASUMSI: OrderRepository di sini milik modul Moreno (core-b2b). PaymentService
@@ -23,14 +25,14 @@ import java.util.UUID;
  * membuat/mengubah/menghapus Order.
  *
  * CATATAN: entity Payment tidak menandai createdAt/updatedAt sebagai
- * insertable=false/updatable=false, jadi diisi manual di sini supaya tidak
- * NULL saat disimpan.
+ * insertable=false/updatable=false, jadi diisi manual di sini supaya tidak NULL
+ * saat disimpan.
  *
- * TODO (belum diimplementasikan): integrasi payment gateway asli
- * (mis. Midtrans/Xendit). Saat ini gatewayRef di-generate sendiri sebagai
- * placeholder ("MOCK-..."), belum benar-benar memanggil API gateway manapun.
- * Signature method sengaja dibiarkan sama supaya PaymentController tidak
- * perlu ikut berubah saat integrasi asli dipasang nanti.
+ * TODO (belum diimplementasikan): integrasi payment gateway asli (mis.
+ * Midtrans/Xendit). Saat ini gatewayRef di-generate sendiri sebagai placeholder
+ * ("MOCK-..."), belum benar-benar memanggil API gateway manapun. Signature
+ * method sengaja dibiarkan sama supaya PaymentController tidak perlu ikut
+ * berubah saat integrasi asli dipasang nanti.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,7 +54,7 @@ public class PaymentService {
     public PaymentResponse initiatePayment(PaymentRequest request) {
         Order order = orderRepository.findById(request.idOrder())
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Order dengan id " + request.idOrder() + " tidak ditemukan"));
+                "Order dengan id " + request.idOrder() + " tidak ditemukan"));
 
         LocalDateTime now = LocalDateTime.now();
         Payment payment = Payment.builder()
@@ -71,15 +73,15 @@ public class PaymentService {
     }
 
     /**
-     * Dipanggil dari endpoint webhook saat payment gateway mengonfirmasi
-     * status pembayaran. Kalau status yang dikirim gateway menandakan sukses
-     * (LUNAS), paidAt diisi sekarang.
+     * Dipanggil dari endpoint webhook saat payment gateway mengonfirmasi status
+     * pembayaran. Kalau status yang dikirim gateway menandakan sukses (LUNAS),
+     * paidAt diisi sekarang.
      */
     @Transactional
     public PaymentResponse handleCallback(PaymentCallbackRequest request) {
         Payment payment = paymentRepository.findByGatewayRef(request.gatewayRef())
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Payment dengan gatewayRef " + request.gatewayRef() + " tidak ditemukan"));
+                "Payment dengan gatewayRef " + request.gatewayRef() + " tidak ditemukan"));
 
         payment.setStatus(request.status());
         if (STATUS_LUNAS.equalsIgnoreCase(request.status())) {
@@ -106,7 +108,7 @@ public class PaymentService {
     private Payment findOrThrow(UUID idPayment) {
         return paymentRepository.findById(idPayment)
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Payment dengan id " + idPayment + " tidak ditemukan"));
+                "Payment dengan id " + idPayment + " tidak ditemukan"));
     }
 
     private PaymentResponse toResponse(Payment payment) {
