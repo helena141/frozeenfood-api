@@ -7,6 +7,10 @@ import java.util.UUID;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.CascadeType;
+import java.util.List;
+import java.util.ArrayList;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -45,7 +49,7 @@ public class Order {
 
     // B2C (Eceran) atau B2B (Grosir)
     @Column(name = "tipe_order", nullable = false, length = 20)
-    private String tipeOrder; 
+    private String tipeOrder;
 
     // Status: Menunggu Pembayaran, Dibayar, Diproses, Dikirim, Selesai
     @Column(name = "status", nullable = false, length = 50)
@@ -68,4 +72,7 @@ public class Order {
 
     @Column(name = "deleted_at", insertable = false, updatable = false)
     private LocalDateTime deletedAt;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderItem> items = new ArrayList<>();
 }

@@ -18,7 +18,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-
 @Entity
 @Table(name = "order_items")
 @Getter
@@ -43,11 +42,11 @@ public class OrderItem {
     @JoinColumn(name = "id_prod_batch", nullable = false)
     private ProductBatch productBatch;
 
-    @Column(name = "quantity", nullable = false)
+    @Column(name = "qty", nullable = false)
     private Integer quantity;
 
-    // Harga Momen Transaksi (Mencegah nota lama berubah kalau harga master naik)
-    @Column(name = "harga_satuan", nullable = false, precision = 15, scale = 2)
+// Harga Momen Transaksi (Mencegah nota lama berubah kalau harga master naik)
+    @Column(name = "harga_satuan_snapshot", nullable = false, precision = 15, scale = 2)
     private BigDecimal hargaSatuanSnapshot;
 
     @Column(name = "subtotal_item", nullable = false, precision = 15, scale = 2)

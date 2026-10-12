@@ -4,10 +4,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class FrozenfoodApplication {
+public class FrozenFoodApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(FrozenfoodApplication.class, args);
+        SpringApplication.run(FrozenFoodApplication.class, args);
     }
-
 }
