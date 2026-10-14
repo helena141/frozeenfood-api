@@ -1,9 +1,9 @@
 package com.lezzat.b2b2c.frozenfood.dto.request;
 
-import java.util.UUID;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+
+import java.util.UUID;
 
 public record DeliveryRequest(
 

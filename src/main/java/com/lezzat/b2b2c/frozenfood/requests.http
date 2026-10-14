@@ -1,0 +1,213 @@
+  ### =====================================================================
+### TESTING LENGKAP - MODUL KRISNA (Lezzat Frozen Food)
+### Dipakai dengan ekstensi REST client (.http) di Antigravity/VS Code.
+###
+### CARA PAKAI:
+### 1. Jalankan seed-data.sql dulu di psql/pgAdmin untuk isi Customer,
+###    Product, ProductBatch (lihat file seed-data.sql yang sudah dikirim
+###    sebelumnya).
+### 2. Ganti nilai @idUser dan @idProduk di bawah dengan UUID hasil seed.
+### 3. Jalankan request SATU PER SATU, URUT DARI ATAS KE BAWAH (klik
+###    "Send Request" yang biasanya muncul di atas tiap blok ###).
+### 4. Setiap kali ada komentar "SALIN ke @xxx", copy nilai dari response
+###    JSON yang baru keluar, lalu update variabel di baris @xxx di bawah
+###    sebelum lanjut ke request berikutnya.
+### =====================================================================
+
+@baseUrl = http://localhost:8080
+
+### Ganti dua baris ini dengan UUID hasil seed-data.sql
+@idUser = 348bb928-30f4-4492-8c99-33ec3f5553e5
+@idProduk = b8e000c3-0ea1-4a6a-973b-28730b0dfea6
+
+### Variabel ini diisi belakangan, setelah request terkait dijalankan
+@idOrder = BELUM_DIISI
+@idDelivery = BELUM_DIISI
+@idPayment = BELUM_DIISI
+@gatewayRef = BELUM_DIISI
+
+
+### =====================================================================
+### 1. UC-09 - BUAT PESANAN SATUAN (B2C)
+### =====================================================================
+
+### 1.1 Create Retail Order (sukses)
+# Harapan: 201 Created. SALIN "idOrder" dari response ke variabel @idOrder di atas.
+POST {{baseUrl}}/api/orders/retail
+Content-Type: application/json
+
+{
+  "idUser": "{{idUser}}",
+  "items": [
+    { "idProduk": "{{idProduk}}", "quantity": 2 }
+  ],
+  "catatan": "test order pertama"
+}
+
+### 1.2 Create Retail Order - multi item (produk sama, 2 baris)
+# Cek totalTagihan terhitung benar dan stok terpotong sesuai total qty (1+3=4)
+POST {{baseUrl}}/api/orders/retail
+Content-Type: application/json
+
+{
+  "idUser": "{{idUser}}",
+  "items": [
+    { "idProduk": "{{idProduk}}", "quantity": 1 },
+    { "idProduk": "{{idProduk}}", "quantity": 3 }
+  ],
+  "catatan": "test multi item"
+}
+
+
+### =====================================================================
+### 2. UC-15/16/24/25 - DELIVERY (Status Pesanan)
+### Pastikan @idOrder sudah diisi dari step 1.1 sebelum lanjut ke sini.
+### =====================================================================
+
+### 2.1 Create Delivery - dalam radius 15km (sukses)
+# Koordinat dekat toko (-7.756318, 110.371033). Harapan: 201.
+# SALIN "idDelivery" dari response ke variabel @idDelivery di atas.
+POST {{baseUrl}}/api/deliveries
+Content-Type: application/json
+
+{
+  "idOrder": "{{idOrder}}",
+  "alamatTujuan": "Jl. Malioboro No. 10, Yogyakarta",
+  "latitudeTujuan": -7.7925,
+  "longitudeTujuan": 110.3650,
+  "metodeDeliv": "INSTANT"
+}
+
+### 2.2 Get Delivery by ID
+GET {{baseUrl}}/api/deliveries/{{idDelivery}}
+
+### 2.3 Get Delivery by Order ID
+GET {{baseUrl}}/api/deliveries/order/{{idOrder}}
+
+### 2.4 Update Status Delivery -> DALAM_PERJALANAN
+PATCH {{baseUrl}}/api/deliveries/{{idDelivery}}/status?statusDelivery=DALAM_PERJALANAN
+
+### 2.5 Update Status Delivery -> TERKIRIM
+PATCH {{baseUrl}}/api/deliveries/{{idDelivery}}/status?statusDelivery=TERKIRIM
+
+
+### =====================================================================
+### 3. UC-14/23 - PAYMENT
+### =====================================================================
+
+### 3.1 Initiate Payment
+# Harapan: 201, status=PENDING, gatewayRef="MOCK-<uuid>".
+# SALIN "gatewayRef" dan "idPayment" dari response ke variabel di atas.
+POST {{baseUrl}}/api/payments
+Content-Type: application/json
+
+{
+  "idOrder": "{{idOrder}}",
+  "metodePay": "QRIS"
+}
+
+### 3.2 Payment Callback - LUNAS (simulasi webhook gateway)
+POST {{baseUrl}}/api/payments/callback
+Content-Type: application/json
+
+{
+  "gatewayRef": "{{gatewayRef}}",
+  "status": "LUNAS",
+  "jumlahDikonfirmasi": null
+}
+
+### 3.3 Get Payment by ID
+GET {{baseUrl}}/api/payments/{{idPayment}}
+
+### 3.4 Get Payment by Order ID
+GET {{baseUrl}}/api/payments/order/{{idOrder}}
+
+
+### =====================================================================
+### 4. UC-17/26 - UNDUH NOTA PESANAN (PDF)
+### =====================================================================
+
+### 4.1 Download Nota PDF
+# Kalau klien .http Anda bisa simpan response body ke file, hasilnya PDF.
+# Kalau tidak bisa, buka saja URL ini langsung di browser:
+# http://localhost:8080/api/orders/{{idOrder}}/nota
+GET {{baseUrl}}/api/orders/{{idOrder}}/nota
+
+
+### =====================================================================
+### 5. UC-31/32 - LAPORAN
+### =====================================================================
+
+### 5.1 Laporan Keuangan (UC-32) - omzet bulan ini
+# Harapan: totalOmzet mencakup payment yang sudah LUNAS dari step 3.2.
+GET {{baseUrl}}/api/reports/omzet?mulai=2026-10-01&akhir=2026-10-31
+
+### 5.2 Laporan Keuangan - periode tanpa transaksi (edge case)
+# Harapan: 200 OK, semua angka 0 (bukan error pembagian oleh nol)
+GET {{baseUrl}}/api/reports/omzet?mulai=2020-01-01&akhir=2020-01-31
+
+### 5.3 Laporan Penjualan (UC-31) - volume bulan ini
+# Harapan: jumlahPesanan, totalUnitTerjual, pecahan B2C/B2B, top 5 produk.
+# Order dari step 1.1/1.2 ikut terhitung di sini WALAUPUN belum tentu lunas
+# (laporan ini berbasis OrderItem, bukan Payment).
+GET {{baseUrl}}/api/reports/penjualan?mulai=2026-10-01&akhir=2026-10-31
+
+
+### =====================================================================
+### 6. KASUS ERROR (negative tests) - pastikan semua 400/404, BUKAN 500
+### =====================================================================
+
+### 6.1 Order - stok tidak cukup (harus 400)
+POST {{baseUrl}}/api/orders/retail
+Content-Type: application/json
+
+{
+  "idUser": "{{idUser}}",
+  "items": [
+    { "idProduk": "{{idProduk}}", "quantity": 999999 }
+  ]
+}
+
+### 6.2 Order - idUser tidak ditemukan (harus 404)
+POST {{baseUrl}}/api/orders/retail
+Content-Type: application/json
+
+{
+  "idUser": "00000000-0000-0000-0000-000000000000",
+  "items": [
+    { "idProduk": "{{idProduk}}", "quantity": 1 }
+  ]
+}
+
+### 6.3 Order - items kosong (harus 400, validasi @NotEmpty)
+POST {{baseUrl}}/api/orders/retail
+Content-Type: application/json
+
+{
+  "idUser": "{{idUser}}",
+  "items": []
+}
+
+### 6.4 Delivery - di luar radius 15km, Jakarta (harus 400)
+POST {{baseUrl}}/api/deliveries
+Content-Type: application/json
+
+{
+  "idOrder": "{{idOrder}}",
+  "alamatTujuan": "Monas, Jakarta Pusat",
+  "latitudeTujuan": -6.1754,
+  "longitudeTujuan": 106.8272,
+  "metodeDeliv": "INSTANT"
+}
+
+### 6.5 Payment Callback - gatewayRef tidak ditemukan (harus 404)
+POST {{baseUrl}}/api/payments/callback
+Content-Type: application/json
+
+{
+  "gatewayRef": "MOCK-tidak-pernah-ada",
+  "status": "LUNAS"
+}
+
+### 6.6 Nota - idOrder tidak ditemukan (harus 404)
+GET {{baseUrl}}/api/orders/00000000-0000-0000-0000-000000000000/nota
