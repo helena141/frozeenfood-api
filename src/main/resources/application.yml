@@ -13,3 +13,4 @@ spring:
     clean-disabled: false
     clean-on-validation-error: true
     baseline-on-migrate: true
+    
