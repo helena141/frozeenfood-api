@@ -11,6 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class ProductBatchService {
@@ -34,15 +38,39 @@ public class ProductBatchService {
 
         ProductBatch savedBatch = productBatchRepository.save(batch);
 
+        return mapToResponse(savedBatch);
+    }
+
+    // === FITUR TAMPIL DATA BATCH DITAMBAHKAN DI SINI ===
+
+    // Mengambil semua data batch (untuk admin/gudang)
+    @Transactional(readOnly = true)
+    public List<ProductBatchResponse> getAllBatches() {
+        return productBatchRepository.findAll().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    // Logika FEFO: Mengambil batch yang stoknya masih ada untuk produk tertentu
+    @Transactional(readOnly = true)
+    public List<ProductBatchResponse> getAvailableBatches(UUID idProduk) {
+        // Menggunakan nama method dari "KODE BONY" dan mengisi minStok dengan angka 0
+        return productBatchRepository.findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(idProduk, 0).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    // Helper method untuk konversi ke Response biar kodenya tidak berulang
+    private ProductBatchResponse mapToResponse(ProductBatch batch) {
         return new ProductBatchResponse(
-                savedBatch.getIdProdBatch(),
-                savedBatch.getProduct().getIdProduk(),
-                savedBatch.getProduct().getNamaProduk(),
-                savedBatch.getStokAwal(),
-                savedBatch.getStokOnline(),
-                savedBatch.getTanggalExp(),
-                savedBatch.getHargaOverride(),
-                savedBatch.getDiskon()
+                batch.getIdProdBatch(),
+                batch.getProduct().getIdProduk(),
+                batch.getProduct().getNamaProduk(),
+                batch.getStokAwal(),
+                batch.getStokOnline(),
+                batch.getTanggalExp(),
+                batch.getHargaOverride(),
+                batch.getDiskon()
         );
     }
 }
