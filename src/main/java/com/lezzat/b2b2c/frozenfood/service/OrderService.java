@@ -1,6 +1,7 @@
 package com.lezzat.b2b2c.frozenfood.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 
 import org.springframework.security.core.Authentication;
@@ -12,42 +13,25 @@ import com.lezzat.b2b2c.frozenfood.dto.request.OrderRequest;
 import com.lezzat.b2b2c.frozenfood.entity.Customer;
 import com.lezzat.b2b2c.frozenfood.entity.Order;
 import com.lezzat.b2b2c.frozenfood.entity.OrderItem;
-import com.lezzat.b2b2c.frozenfood.entity.ProductBatch;
 import com.lezzat.b2b2c.frozenfood.repository.CustomerRepository;
 import com.lezzat.b2b2c.frozenfood.repository.OrderRepository;
-import com.lezzat.b2b2c.frozenfood.repository.ProductBatchRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
 
     private final OrderRepository orderRepository;
     private final CustomerRepository customerRepository;
-    private final ProductBatchRepository productBatchRepository;
     private final TieringPriceService tieringPriceService;
 
-    // Dependency Injection standar Enterprise
-    public OrderService(OrderRepository orderRepository, 
-                        CustomerRepository customerRepository, 
-                        ProductBatchRepository productBatchRepository,
-                        TieringPriceService tieringPriceService) {
-        this.orderRepository = orderRepository;
-        this.customerRepository = customerRepository;
-        this.productBatchRepository = productBatchRepository;
-        this.tieringPriceService = tieringPriceService;
-    }
-
-    /**
-     * @Transactional menjamin Doktrin ACID. Jika stok gagal dipotong, 
-     * atau error di tengah jalan, seluruh transaksi (termasuk Order yang udah dibuat)
-     * akan di-rollback ke state awal.
-     */
-     @Transactional
+    @Transactional
     public Order createOrder(OrderRequest request) {
-        
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String email = authentication.getName();
         String role = authentication.getAuthorities().iterator().next().getAuthority().replace("ROLE_", "");
-        
+
         Customer customer = customerRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Kriminal: Token valid tapi user tidak ada di Database!"));
 
@@ -55,7 +39,7 @@ public class OrderService {
                 .customer(customer)
                 .tipeOrder(role)
                 .status("MENUNGGU_PEMBAYARAN")
-                .ongkir(new BigDecimal("15000.00")) 
+                .ongkir(new BigDecimal("15000.00"))
                 .items(new ArrayList<>())
                 .totalTagihan(BigDecimal.ZERO)
                 .build();
@@ -63,19 +47,28 @@ public class OrderService {
         BigDecimal grandTotal = BigDecimal.ZERO;
 
         for (OrderRequest.ItemRequest itemReq : request.getItems()) {
-            
-            ProductBatch batch = productBatchRepository.findById(itemReq.getBatchId())
-                    .orElseThrow(() -> new RuntimeException("Data Corrupt: Batch ID " + itemReq.getBatchId() + " tidak ditemukan!"));
-
-            OrderItem orderItem = tieringPriceService.processB2BCheckoutItem(
+            TieringPriceService.B2BCheckoutResult checkoutResult = tieringPriceService.executeFefoBlendedPricing(
                     customer,
-                    order,
-                    batch.getProduct().getIdProduk(),
+                    itemReq.getIdProduk(),
                     itemReq.getQuantity()
             );
 
-            grandTotal = grandTotal.add(orderItem.getSubtotalItem());
-            order.getItems().add(orderItem);
+            for (TieringPriceService.BatchDeduction deduction : checkoutResult.deductedBatches()) {
+                BigDecimal subtotalItem = checkoutResult.blendedUnitPrice()
+                        .multiply(BigDecimal.valueOf(deduction.quantityDeducted()))
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                OrderItem orderItem = OrderItem.builder()
+                        .order(order)
+                        .productBatch(deduction.batch())
+                        .quantity(deduction.quantityDeducted())
+                        .hargaSatuanSnapshot(checkoutResult.blendedUnitPrice())
+                        .subtotalItem(subtotalItem)
+                        .build();
+
+                order.getItems().add(orderItem);
+                grandTotal = grandTotal.add(subtotalItem);
+            }
         }
 
         order.setTotalTagihan(grandTotal.add(order.getOngkir()));

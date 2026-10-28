@@ -3,6 +3,7 @@ package com.lezzat.b2b2c.frozenfood.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,63 +25,64 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor // Standar Enterprise: Inject Repository tanpa @Autowired manual
+@RequiredArgsConstructor
 public class TieringPriceService {
 
     private static final int CLEARANCE_DAYS_THRESHOLD = 7;
-    private static final BigDecimal CLEARANCE_DISCOUNT_MULTIPLIER = new BigDecimal("0.50"); // Harga banting 50%
-    private static final BigDecimal B2B_REGULAR_DISCOUNT_MULTIPLIER = new BigDecimal("0.92"); // Diskon reguler B2B 8% (antara 5-10%)
+    private static final BigDecimal CLEARANCE_DISCOUNT_MULTIPLIER = new BigDecimal("0.50");
+    private static final BigDecimal B2B_REGULAR_DISCOUNT_MULTIPLIER = new BigDecimal("0.92");
 
     private final TieringPriceRepository tieringPriceRepository;
     private final ProductBatchRepository productBatchRepository;
 
-    /**
-     * Mesin Kalkulator Smart System (FEFO Clearance + Dynamic Tiering)
-     */
-    public BigDecimal calculateFinalPrice(String tipeAkun, int quantity, ProductBatch batch) {
-        
-        // Tarik harga normal sebagai fondasi
-        BigDecimal hargaDasar = batch.getHargaOverride() != null ? 
-                                batch.getHargaOverride() : 
-                                batch.getProduct().getHargaEceran();
+    public record BatchDeduction(
+            ProductBatch batch,
+            int quantityDeducted,
+            BigDecimal rawUnitPrice,
+            BigDecimal rawSubtotal
+    ) {}
 
-        // 1. SENSOR DARURAT (CUCI GUDANG FEFO)
-        // Jika umur barang tinggal 7 hari atau kurang, banting harga 50% untuk selamatkan aset
-        LocalDate batasCuciGudang = LocalDate.now().plusDays(7);
+    public record B2BCheckoutResult(
+            UUID productId,
+            int totalQuantity,
+            BigDecimal blendedUnitPrice,
+            BigDecimal totalCost,
+            List<BatchDeduction> deductedBatches
+    ) {}
+
+    public BigDecimal calculateFinalPrice(String tipeAkun, int quantity, ProductBatch batch) {
+        BigDecimal hargaDasar = batch.getHargaOverride() != null
+                ? batch.getHargaOverride()
+                : batch.getProduct().getHargaEceran();
+
+        LocalDate batasCuciGudang = LocalDate.now().plusDays(CLEARANCE_DAYS_THRESHOLD);
         if (!batch.getTanggalExp().isAfter(batasCuciGudang)) {
             log.warn("🚨 [CUCI GUDANG] Batch {} mendekati expired! Harga dipotong 50%.", batch.getIdProdBatch());
-            return hargaDasar.multiply(new BigDecimal("0.50")); 
+            return hargaDasar.multiply(CLEARANCE_DISCOUNT_MULTIPLIER).setScale(2, RoundingMode.HALF_UP);
         }
 
-        // 2. TEMBOK B2C (Aturan Mutlak: Haram dapat diskon kuantitas)
         if ("B2C".equalsIgnoreCase(tipeAkun)) {
-            return hargaDasar; 
+            return hargaDasar.setScale(2, RoundingMode.HALF_UP);
         }
 
-        // 3. MESIN TIERING B2B (Database-Driven)
         if ("B2B".equalsIgnoreCase(tipeAkun)) {
             Optional<TieringPrice> tiering = tieringPriceRepository.findDynamicB2BPrice(
-                batch.getProduct().getIdProduk(), 
-                quantity
+                    batch.getProduct().getIdProduk(),
+                    quantity
             );
 
-            // Jika kuantitas pembelian masuk ke dalam rentang min_qty & max_qty di tabel
             if (tiering.isPresent()) {
-                return tiering.get().getHargaPerUnit();
+                return tiering.get().getHargaPerUnit().setScale(2, RoundingMode.HALF_UP);
             }
+
+            return hargaDasar.multiply(B2B_REGULAR_DISCOUNT_MULTIPLIER).setScale(2, RoundingMode.HALF_UP);
         }
 
-        // Fallback: Kalau B2B beli di bawah batas minimum (misal batas min 10, dia beli 2), kena harga dasar
-        return hargaDasar;
+        return hargaDasar.setScale(2, RoundingMode.HALF_UP);
     }
 
-    /**
-     * Algoritma Kalkulasi Harga & Pemotongan Stok Lintas Batch (FEFO + Average Cost) khusus B2B
-     */
     @Transactional
-    public OrderItem processB2BCheckoutItem(Customer customer, Order order, UUID productId, int requestedQty) {
-
-        // 1. Gatekeeper: Validasi mutlak akun B2B
+    public B2BCheckoutResult executeFefoBlendedPricing(Customer customer, UUID productId, int requestedQty) {
         if (customer == null || !"B2B".equalsIgnoreCase(customer.getTipeAkun())) {
             throw new IllegalArgumentException("Akses ditolak: Kalkulasi ini khusus untuk akun tipe B2B.");
         }
@@ -89,12 +91,15 @@ public class TieringPriceService {
             throw new IllegalArgumentException("Kuantitas order harus lebih dari 0.");
         }
 
-        // Tarik semua batch aktif untuk produk terkait dengan urutan FEFO (Expired terdekat lebih dulu)
         List<ProductBatch> batches = productBatchRepository
                 .findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(productId, 0);
 
+        if (batches.isEmpty()) {
+            throw new IllegalStateException("Stok tidak tersedia untuk produk ID: " + productId);
+        }
+
         int totalAvailableStock = batches.stream()
-                .mapToInt(ProductBatch::getStokOnline)
+                .mapToInt(batch -> batch.getStokOnline() != null ? batch.getStokOnline() : 0)
                 .sum();
 
         if (totalAvailableStock < requestedQty) {
@@ -106,13 +111,16 @@ public class TieringPriceService {
         BigDecimal hargaDasarB2C = product.getHargaEceran();
         LocalDate batasCuciGudang = LocalDate.now().plusDays(CLEARANCE_DAYS_THRESHOLD);
 
-        int remainingQtyToFulfill = requestedQty;
-        ProductBatch primaryBatchReference = batches.get(0);
+        BigDecimal hargaRegulerB2B = tieringPriceRepository
+                .findDynamicB2BPrice(productId, requestedQty)
+                .map(TieringPrice::getHargaPerUnit)
+                .orElseGet(() -> hargaDasarB2C.multiply(B2B_REGULAR_DISCOUNT_MULTIPLIER));
 
+        int remainingQtyToFulfill = requestedQty;
         BigDecimal totalCostClearance = BigDecimal.ZERO;
         BigDecimal totalCostRegular = BigDecimal.ZERO;
+        List<BatchDeduction> deductedBatches = new ArrayList<>();
 
-        // 2 & 3. Loop Pemotongan Stok FEFO (Fase 1: Cuci Gudang -> Fase 2: Reguler)
         for (ProductBatch batch : batches) {
             if (remainingQtyToFulfill <= 0) {
                 break;
@@ -121,7 +129,6 @@ public class TieringPriceService {
             int availableInBatch = batch.getStokOnline();
             int qtyTaken = Math.min(availableInBatch, remainingQtyToFulfill);
 
-            // Potong stok batch secara langsung
             batch.setStokOnline(availableInBatch - qtyTaken);
             productBatchRepository.save(batch);
 
@@ -129,41 +136,65 @@ public class TieringPriceService {
             BigDecimal qtyTakenDec = BigDecimal.valueOf(qtyTaken);
 
             boolean isClearanceBatch = !batch.getTanggalExp().isAfter(batasCuciGudang);
+            BigDecimal appliedBatchUnitPrice;
 
             if (isClearanceBatch) {
-                // Fase 1: Prioritas Cuci Gudang (Gunakan hargaOverride jika ada, atau potong 50% dari harga dasar)
-                BigDecimal hargaGudang = (batch.getHargaOverride() != null)
+                appliedBatchUnitPrice = (batch.getHargaOverride() != null)
                         ? batch.getHargaOverride()
                         : hargaDasarB2C.multiply(CLEARANCE_DISCOUNT_MULTIPLIER);
 
-                log.warn("🚨 [B2B CUCI GUDANG] Mengambil {} pcs dari Batch {} dengan harga clearance {}",
-                        qtyTaken, batch.getIdProdBatch(), hargaGudang);
+                log.warn("🚨 [B2B CUCI GUDANG] Mengambil {} pcs dari Batch {} (Exp: {}) dengan harga clearance {}",
+                        qtyTaken, batch.getIdProdBatch(), batch.getTanggalExp(), appliedBatchUnitPrice);
 
-                totalCostClearance = totalCostClearance.add(hargaGudang.multiply(qtyTakenDec));
+                totalCostClearance = totalCostClearance.add(appliedBatchUnitPrice.multiply(qtyTakenDec));
             } else {
-                // Fase 2: Stok Batch Reguler (Diskon B2B Bulk pada harga dasar B2C)
-                BigDecimal hargaDiskonReguler = hargaDasarB2C.multiply(B2B_REGULAR_DISCOUNT_MULTIPLIER);
+                appliedBatchUnitPrice = (batch.getHargaOverride() != null)
+                        ? batch.getHargaOverride()
+                        : hargaRegulerB2B;
 
-                totalCostRegular = totalCostRegular.add(hargaDiskonReguler.multiply(qtyTakenDec));
+                totalCostRegular = totalCostRegular.add(appliedBatchUnitPrice.multiply(qtyTakenDec));
             }
+
+            BigDecimal rawSubtotal = appliedBatchUnitPrice.multiply(qtyTakenDec).setScale(2, RoundingMode.HALF_UP);
+            deductedBatches.add(new BatchDeduction(batch, qtyTaken, appliedBatchUnitPrice, rawSubtotal));
         }
 
-        // 4. Agregasi Average Cost
-        // Total Harga = (Qty Gudang * Harga Gudang) + (Qty Reguler * Harga Diskon Reguler)
         BigDecimal totalHarga = totalCostClearance.add(totalCostRegular)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // Harga Rata-Rata Per Pcs = Total Harga / Total Qty Order
         BigDecimal hargaRataRataPerPcs = totalHarga.divide(
                 BigDecimal.valueOf(requestedQty), 2, RoundingMode.HALF_UP);
 
-        // 5. Finalisasi Struk: Kunci harga rata-rata ke hargaSatuanSnapshot pada OrderItem
-        return OrderItem.builder()
-                .order(order)
-                .productBatch(primaryBatchReference)
-                .quantity(requestedQty)
-                .hargaSatuanSnapshot(hargaRataRataPerPcs)
-                .subtotalItem(totalHarga)
-                .build();
+        return new B2BCheckoutResult(
+                productId,
+                requestedQty,
+                hargaRataRataPerPcs,
+                totalHarga,
+                deductedBatches
+        );
+    }
+
+    @Transactional
+    public List<OrderItem> processB2BCheckoutItems(Customer customer, Order order, UUID productId, int requestedQty) {
+        B2BCheckoutResult result = executeFefoBlendedPricing(customer, productId, requestedQty);
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        for (BatchDeduction deduction : result.deductedBatches()) {
+            BigDecimal subtotalItem = result.blendedUnitPrice()
+                    .multiply(BigDecimal.valueOf(deduction.quantityDeducted()))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            OrderItem item = OrderItem.builder()
+                    .order(order)
+                    .productBatch(deduction.batch())
+                    .quantity(deduction.quantityDeducted())
+                    .hargaSatuanSnapshot(result.blendedUnitPrice())
+                    .subtotalItem(subtotalItem)
+                    .build();
+
+            orderItems.add(item);
+        }
+
+        return orderItems;
     }
 }
