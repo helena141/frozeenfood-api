@@ -23,8 +23,15 @@ public class ProductController {
         return ResponseEntity.ok(productService.getAllProducts());
     }
 
+    // === FITUR SEARCH DITAMBAHKAN DI SINI ===
+    @GetMapping("/search")
+    public ResponseEntity<List<ProductCatalogResponse>> searchProducts(@RequestParam String keyword) {
+        return ResponseEntity.ok(productService.searchProducts(keyword));
+    }
+    // ========================================
+
     @GetMapping("/{id}")
-    public ResponseEntity<ProductCatalogResponse> getProductById(@PathVariable java.util.UUID id) {
+    public ResponseEntity<ProductCatalogResponse> getProductById(@PathVariable UUID id) {
         return ResponseEntity.ok(productService.getProductById(id));
     }
 
