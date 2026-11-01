@@ -57,7 +57,7 @@ public class TieringPriceService {
 
         LocalDate batasCuciGudang = LocalDate.now().plusDays(CLEARANCE_DAYS_THRESHOLD);
         if (!batch.getTanggalExp().isAfter(batasCuciGudang)) {
-            log.warn("🚨 [CUCI GUDANG] Batch {} mendekati expired! Harga dipotong 50%.", batch.getIdProdBatch());
+            log.warn(" [CUCI GUDANG] Batch {} mendekati expired! Harga dipotong 50%.", batch.getIdProdBatch());
             return hargaDasar.multiply(CLEARANCE_DISCOUNT_MULTIPLIER).setScale(2, RoundingMode.HALF_UP);
         }
 
