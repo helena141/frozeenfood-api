@@ -18,6 +18,48 @@ public class ProductService {
 
     private final ProductRepository productRepository;
 
+    @Transactional
+    public ProductCatalogResponse createProduct(ProductRequest request) {
+        // 1. Mapping dari DTO ke Entity Product
+        Product product = Product.builder()
+                .namaProduk(request.getNamaProduk())
+                .deskripsiProduk(request.getDeskripsiProduk())
+                .kategori(request.getKategori())
+                .hargaEceran(request.getHargaEceran())
+                .berat(request.getBerat())
+                .volume(request.getVolume())
+                .gambar(request.getGambar())
+                .isActive(request.getIsActive() != null ? request.getIsActive() : true)
+                .build();
+
+        // 2. Simpan ke database
+        Product savedProduct = productRepository.save(product);
+
+        // 3. Convert ke Response DTO
+        return mapToResponse(savedProduct);
+    }
+
+    @Transactional
+    public ProductCatalogResponse updateProduct(UUID id, ProductRequest request) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Produk tidak ditemukan dengan ID: " + id));
+
+        // Update nilai field
+        product.setNamaProduk(request.getNamaProduk());
+        product.setDeskripsiProduk(request.getDeskripsiProduk());
+        product.setKategori(request.getKategori());
+        product.setHargaEceran(request.getHargaEceran());
+        product.setBerat(request.getBerat());
+        product.setVolume(request.getVolume());
+        product.setGambar(request.getGambar());
+        if (request.getIsActive() != null) {
+            product.setIsActive(request.getIsActive());
+        }
+
+        Product updatedProduct = productRepository.save(product);
+        return mapToResponse(updatedProduct);
+    }
+
     @Transactional(readOnly = true)
     public List<ProductCatalogResponse> getAllProducts() {
         return productRepository.findAll().stream()
@@ -25,67 +67,45 @@ public class ProductService {
                 .collect(Collectors.toList());
     }
 
+    // === FITUR SEARCH DITAMBAHKAN DI SINI ===
+    @Transactional(readOnly = true)
+    public List<ProductCatalogResponse> searchProducts(String keyword) {
+        return productRepository.findByNamaProdukContainingIgnoreCase(keyword, keyword).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+    // ========================================
+
     @Transactional(readOnly = true)
     public ProductCatalogResponse getProductById(UUID id) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found with ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Produk tidak ditemukan dengan ID: " + id));
         return mapToResponse(product);
     }
 
     @Transactional
-    public ProductCatalogResponse createProduct(ProductRequest request) {
-        Product product = new Product();
-        // Menggunakan setter sesuai nama variabel bahasa Indonesia dari temanmu
-        product.setNamaProduk(request.getName());
-        product.setDeskripsiProduk(request.getDescription());
-        product.setHargaEceran(request.getPrice());
-        product.setKategori(request.getCategory());
-        // Tambahan default wajib agar tidak error saat di-save
-        product.setBerat(java.math.BigDecimal.ZERO); 
-        
-        Product savedProduct = productRepository.save(product);
-        return mapToResponse(savedProduct);
-    }
-
-    @Transactional
-    public ProductCatalogResponse updateProduct(UUID id, ProductRequest request) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found with ID: " + id));
-        
-        // Menggunakan setter sesuai nama variabel bahasa Indonesia
-        product.setNamaProduk(request.getName());
-        product.setDeskripsiProduk(request.getDescription());
-        product.setHargaEceran(request.getPrice());
-        product.setKategori(request.getCategory());
-        
-        Product updatedProduct = productRepository.save(product);
-        return mapToResponse(updatedProduct);
-    }
-
-    @Transactional
     public void deleteProduct(UUID id) {
+        if (!productRepository.existsById(id)) {
+            throw new RuntimeException("Produk tidak ditemukan dengan ID: " + id);
+        }
+        // TODO: (Sprint Berikutnya) Tambahkan validasi cek histori ke tabel order_details. 
+        // Jika produk sudah pernah terjual, batalkan delete dan minta user melakukan Deactivate (isActive = false).
         productRepository.deleteById(id);
     }
 
-   // Helper method untuk map dari Entity (Bahasa Indonesia) ke DTO (Bahasa Inggris)
+    // Helper method untuk konversi Entity ke Response DTO
     private ProductCatalogResponse mapToResponse(Product product) {
-        int totalAvailableStock = 0;
-        
-        // Kalkulasi stok dari relasi @OneToMany ProductBatch
-        if (product.getProductBatches() != null) {
-            // Kita jumlahkan semua stok_online dari batch yang terhubung ke produk ini
-            totalAvailableStock = product.getProductBatches().stream()
-                    .mapToInt(batch -> batch.getStokOnline() != null ? batch.getStokOnline() : 0)
-                    .sum();
-        }
-
         return ProductCatalogResponse.builder()
-                .id(product.getIdProduk())
-                .name(product.getNamaProduk())
-                .description(product.getDeskripsiProduk())
-                .price(product.getHargaEceran())
-                .category(product.getKategori())
-                .totalStock(totalAvailableStock) // Sekarang stok di Katalog akan menampilkan angka real!
+                .idProduk(product.getIdProduk())
+                .namaProduk(product.getNamaProduk())
+                .deskripsiProduk(product.getDeskripsiProduk())
+                .kategori(product.getKategori())
+                .hargaEceran(product.getHargaEceran())
+                .berat(product.getBerat())
+                .volume(product.getVolume())
+                .gambar(product.getGambar())
+                .isActive(product.getIsActive())
+                .totalStock(0)
                 .build();
     }
 }

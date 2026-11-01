@@ -12,8 +12,12 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductRequest {
-    private String name;
-    private String description;
-    private BigDecimal price; // Harga eceran (B2C), wajib BigDecimal
-    private String category;
+    private String namaProduk;
+    private String deskripsiProduk;
+    private String kategori;
+    private BigDecimal hargaEceran;
+    private BigDecimal berat;
+    private BigDecimal volume;
+    private String gambar;
+    private Boolean isActive;
 }
