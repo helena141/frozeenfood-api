@@ -13,10 +13,14 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductCatalogResponse {
-    private UUID id; // Wajib UUID
-    private String name;
-    private String description;
-    private BigDecimal price; // Harga eceran
-    private String category;
-    private Integer totalStock; // Akumulasi stok dari seluruh ProductBatch yang valid
+    private UUID idProduk;
+    private String namaProduk;
+    private String deskripsiProduk;
+    private String kategori;
+    private BigDecimal hargaEceran;
+    private BigDecimal berat;
+    private BigDecimal volume;
+    private String gambar;
+    private Boolean isActive;
+    private Integer totalStock; // Akumulasi stok dari seluruh ProductBatch
 }
