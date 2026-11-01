@@ -1,0 +1,268 @@
+========================================================================================
+DOKUMENTASI ARSITEKTUR & MATERI PRESENTASI BACKEND
+PROYEK : LEZZAT FROZEN FOOD (SPRING BOOT + POSTGRESQL)
+TOPIK  : B2B CHECKOUT DENGAN DYNAMIC BLENDED PRICING & FEFO INVENTORY
+========================================================================================
+
+----------------------------------------------------------------------------------------
+1. FUNDAMENTAL & MASALAH BISNIS
+----------------------------------------------------------------------------------------
+
+A. Mengapa Sistem B2B Tidak Boleh Memilih `batchId` dari Sisi Frontend?
+   1. Mencegah Cherry-Picking Batch Baru:
+      Jika Frontend mengizinkan pembeli (terutama mitra grosir/B2B) memilih `id_prod_batch`
+      secara manual, maka seluruh pembeli pasti hanya akan memilih batch dengan tanggal
+      kedaluwarsa (`tanggal_exp`) paling lama. Akibatnya, stok batch lama di gudang tidak
+      akan pernah terjual dan menjadi dead-stock (kerugian finansial mutlak).
+   2. Enkapsulasi Logika Gudang di Backend (Single Source of Truth):
+      Pada kontrak DTO `OrderRequest`, payload yang dikirim klien ke `POST /api/orders/checkout`
+      hanya berisi `idProduk` dan `quantity`. Urusan pemetaan ke fisik batch (`id_prod_batch`)
+      sepenuhnya menjadi otoritas mesin backend (`TieringPriceService`) secara deterministik.
+   3. Menghindari Race Condition & Manipulasi Harga:
+      Pemilihan batch di sisi klien membuka celah manipulasi harga batch cuci gudang vs
+      reguler serta meningkatkan risiko bentrok stok (stock contention) pada satu batch
+      spesifik ketika banyak request masuk bersamaan.
+
+B. Bagaimana Kombinasi FEFO + Dynamic Blended Pricing Mencegah Dead-Stock Sekaligus
+   Menjaga Kepuasan Pembeli Grosir (B2B)?
+   1. Pencegahan Dead-Stock via FEFO (First Expired, First Out):
+      Sistem secara otomatis menyapu (sweep) stok mulai dari batch yang tanggal
+      kedaluwarsanya paling dekat (`ORDER BY tanggal_exp ASC`). Batch yang mendekati
+      kedaluwarsa (<= 7 hari dari hari ini) otomatis diprioritaskan keluar gudang lebih dulu.
+   2. Insentif Harga via Dynamic Blended Pricing (Win-Win Solution):
+      - Masalah jika tanpa Blended Pricing: Pembeli B2B yang memesan dalam jumlah besar
+        (misal 20 atau 40 pcs) akan keberatan jika menerima sebagian barang yang masa
+        kedaluwarsanya tinggal <= 7 hari tetapi tetap ditagih dengan harga normal.
+      - Solusi Blended Pricing: Backend memberikan diskon Cuci Gudang 50% khusus untuk
+        porsi kuantitas yang terambil dari batch mendekati expired (<= 7 hari), lalu
+        menggabungkannya dengan harga khusus B2B (Tiering Price / Diskon Reguler 8%) untuk
+        sisa kuantitas yang diambil dari batch reguler (> 7 hari).
+      - Hasil Akhir: Seluruh biaya dijumlahkan lalu dibagi dengan total kuantitas beli
+        untuk menghasilkan satu harga satuan rata-rata (Blended Unit Price /
+        `harga_satuan_snapshot`) yang seragam, transparan, dan jauh lebih murah bagi
+        mitra B2B, sementara gudang berhasil mengosongkan stok yang hampir kedaluwarsa.
+
+
+----------------------------------------------------------------------------------------
+2. ALUR SISTEM (STEP-BY-STEP EXECUTION FLOW)
+----------------------------------------------------------------------------------------
+
+Endpoint Target : POST /api/orders/checkout
+Content-Type    : application/json
+Header          : Authorization: Bearer <JWT_TOKEN_B2B>
+
+TAHAP 1: Request Masuk & Validasi Payload (`OrderController.checkout`)
+- Klien mengirimkan JSON body berisi daftar `items` (`idProduk` dan `quantity`).
+- Anotasi `@Valid` memvalidasi `OrderRequest`:
+  * `@NotEmpty` pada `items` (daftar pesanan tidak boleh kosong).
+  * `@NotNull` pada `idProduk` dan `@Min(1)` pada `quantity`.
+
+TAHAP 2: Intersepsi Keamanan & Ekstraksi Role (`JwtAuthenticationFilter` & `OrderService`)
+- `JwtAuthenticationFilter` mengekstrak token dari header `Authorization: Bearer ...`,
+  memvalidasi tanda tangan kriptografi JWT via `JwtTokenProvider`, dan memuat data user
+  ke dalam `SecurityContextHolder`.
+- Di dalam `OrderService.createOrder()`, sistem mengambil identitas user dari
+  `SecurityContextHolder.getContext().getAuthentication()`:
+  * Mengambil `email` (`authentication.getName()`) dan mencari entitas `Customer` di tabel
+    `customers`.
+  * Mengekstrak `role` (`B2B` / `B2C`) dari `GrantedAuthority` untuk mengisi `tipe_order`.
+- Di dalam `TieringPriceService.executeFefoBlendedPricing()`, sistem memverifikasi bahwa
+  `customer.getTipeAkun()` adalah `"B2B"`. Jika bukan B2B, transaksi langsung ditolak.
+
+TAHAP 3: Query Batch FEFO (`ProductBatchRepository`)
+- Sistem memanggil:
+  `findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(productId, 0)`
+- PostgreSQL mengeksekusi query ke tabel `produk_batches` dengan filter `id_produk = ?`,
+  `stok_online > 0`, dan `deleted_at IS NULL`, diurutkan secara mutlak menggunakan indeks
+  `idx_produk_batches_tanggal_exp` (`ORDER BY tanggal_exp ASC`).
+
+TAHAP 4: Validasi Stok Total Lintas-Batch (`TieringPriceService`)
+- Sistem menjumlahkan `stokOnline` dari seluruh batch aktif produk tersebut:
+  `totalAvailableStock = sum(batch.getStokOnline())`
+- Jika `totalAvailableStock < requestedQty`, sistem melempar `IllegalStateException`
+  ("Stok tidak mencukupi. Diminta: X, Tersedia: Y") dan membatalkan transaksi sebelum ada
+  pemotongan stok.
+
+TAHAP 5: Penentuan Parameter Harga Dasar & Harga Reguler B2B
+- Sistem mengambil `hargaDasarB2C = product.getHargaEceran()`.
+- Sistem menentukan batas tanggal cuci gudang:
+  `batasCuciGudang = LocalDate.now().plusDays(7)` (Threshold = 7 hari).
+- Sistem mencari apakah `requestedQty` masuk ke dalam rentang harga grosir di tabel
+  `tiering_prices` melalui query:
+  `SELECT t FROM TieringPrice t WHERE t.product.idProduk = :productId AND :quantity >= t.minQty AND :quantity <= t.maxQty`
+  * Jika ditemukan aturan tiering yang cocok -> gunakan `tiering.getHargaPerUnit()`.
+  * Jika tidak ada aturan tiering yang cocok -> gunakan fallback diskon reguler B2B sebesar
+    8% (`hargaDasarB2C * 0.92`).
+
+TAHAP 6: Iterasi Pemotongan Stok Lintas-Batch (Cross-Batch Sweeping)
+- Sistem melakukan iterasi pada daftar `batches` (yang sudah urut FEFO) selama
+  `remainingQtyToFulfill > 0`:
+  1. Hitung jumlah yang diambil dari batch saat ini:
+     `qtyTaken = Math.min(availableInBatch, remainingQtyToFulfill)`
+  2. Kurangi stok batch secara langsung:
+     `batch.setStokOnline(availableInBatch - qtyTaken)` lalu simpan (`save`).
+  3. Kurangi sisa kebutuhan:
+     `remainingQtyToFulfill -= qtyTaken`.
+  4. Evaluasi status batch terhadap tanggal kedaluwarsa:
+     `isClearanceBatch = !batch.getTanggalExp().isAfter(batasCuciGudang)`
+     (artinya `tanggal_exp <= hari_ini + 7 hari`):
+     - JIKA BATCH CUCI GUDANG (`isClearanceBatch == true`):
+       Harga unit batch tersebut dipotong 50% dari harga dasar (`hargaDasarB2C * 0.50`,
+       kecuali ada `hargaOverride`). Nilai akumulasi masuk ke `totalCostClearance`.
+     - JIKA BATCH REGULER (`isClearanceBatch == false`):
+       Harga unit batch menggunakan `hargaRegulerB2B` (hasil evaluasi Tiering Price atau
+       diskon 8% B2B). Nilai akumulasi masuk ke `totalCostRegular`.
+  5. Catat pemotongan batch ke dalam struktur rekaman `BatchDeduction`.
+
+TAHAP 7: Kalkulasi Blended Unit Price (Harga Rata-Rata Tertimbang)
+- Setelah seluruh `requestedQty` terpenuhi lintas-batch:
+  1. `totalHarga = (totalCostClearance + totalCostRegular)` dibulatkan 2 desimal (`HALF_UP`).
+  2. `hargaRataRataPerPcs (blendedUnitPrice) = totalHarga / requestedQty` dibulatkan 2
+     desimal (`RoundingMode.HALF_UP`).
+
+TAHAP 8: Penyimpanan Multi-Row di `order_items` dalam Satu Transaksi `@Transactional`
+- Kembali ke `OrderService.createOrder()`, untuk setiap elemen `BatchDeduction` hasil
+  sapuan FEFO, sistem membentuk baris entitas `OrderItem` terpisah:
+  * `productBatch`         = Batch fisik yang dipotong (`id_prod_batch`).
+  * `quantity`             = `qtyTaken` dari batch tersebut.
+  * `hargaSatuanSnapshot`  = `blendedUnitPrice` (seragam di semua baris untuk produk tersebut).
+  * `subtotalItem`         = `blendedUnitPrice * quantityDeducted`.
+- Seluruh baris `OrderItem` dimasukkan ke `order.getItems()`.
+- `totalTagihan` pada header `Order` dihitung dari `grandTotal + ongkir` (Rp15.000,00).
+- `orderRepository.save(order)` menyimpan header `orders` beserta seluruh baris `order_items`
+  secara Cascade (`CascadeType.ALL`) dalam satu ikatan transaksi database `@Transactional`.
+  Jika terjadi kegagalan di titik mana pun, PostgreSQL melakukan `ROLLBACK` penuh sehingga
+  stok `produk_batches` dan data `orders` dijamin 100% konsisten (ACID).
+
+
+----------------------------------------------------------------------------------------
+3. BEDAH RUMUS MATEMATIKA & SKENARIO UJI POSTMAN / CURL
+----------------------------------------------------------------------------------------
+
+RUMUS UMUM BLENDED UNIT PRICE:
+  Total BiayaClearance = Qty_Clearance x (Harga_Dasar x 50%)
+  Total BiayaReguler   = Qty_Reguler   x Harga_Reguler_B2B(Total_Qty)
+  Total Harga Produk   = Total BiayaClearance + Total BiayaReguler
+  Blended Unit Price   = Total Harga Produk / Total_Qty
+
+PARAMETER DATA UJI (BASELINE DATABASE):
+- Harga Dasar Eceran (`harga_eceran`) : Rp 50.000,00 / pcs
+- Batch 1 (Cuci Gudang, Exp <= 7 hari) : Stok tersedia = 15 pcs
+  -> Harga Cuci Gudang (Diskon 50%)    = Rp 50.000 x 0.50 = Rp 25.000,00 / pcs
+- Batch 2 (Reguler, Exp > 7 hari)      : Stok tersedia = 100 pcs
+  -> Aturan Harga B2B pada Batch Reguler:
+     * Pembelian < 30 pcs (atau fallback reguler B2B diskon 8%):
+       Rp 50.000 x 0.92 = Rp 46.000,00 / pcs (atau sesuai tier 1: Rp 38.000 / pcs bila
+       dikonfigurasi pada tabel `tiering_prices` untuk rentang 15-29 pcs -> lihat 2 variasi
+       pembuktian di bawah).
+
+========================================================================================
+SKENARIO A: USER MEMBELI QUANTITY = 20 PCS (Target Blended Price: Rp 30.250,00)
+========================================================================================
+
+1. Request JSON (`POST /api/orders/checkout`):
+   {
+     "items": [
+       {
+         "idProduk": "11111111-1111-1111-1111-111111111111",
+         "quantity": 20
+       }
+     ]
+   }
+
+2. Validasi Stok Lintas-Batch:
+   - Total Stok Tersedia = 15 pcs (Batch 1) + 100 pcs (Batch 2) = 115 pcs.
+   - Diminta = 20 pcs -> VALID (20 <= 115).
+
+3. Alokasi & Pemotongan Stok secara FEFO:
+   - Ambil dari Batch 1 (Cuci Gudang, Exp paling dekat):
+     `qtyTaken_1 = min(15, 20) = 15 pcs`
+     (Sisa stok Batch 1 menjadi 15 - 15 = 0 pcs; sisa kebutuhan order = 20 - 15 = 5 pcs).
+   - Ambil sisa kebutuhan dari Batch 2 (Reguler):
+     `qtyTaken_2 = min(100, 5) = 5 pcs`
+     (Sisa stok Batch 2 menjadi 100 - 5 = 95 pcs; sisa kebutuhan order = 5 - 5 = 0 pcs).
+
+4. Perhitungan Komponen Biaya:
+   - Biaya Batch 1 (Cuci Gudang - Diskon 50%):
+     15 pcs x Rp 25.000,00 = Rp 375.000,00
+   - Biaya Batch 2 (Reguler B2B - Diskon Reguler 8% = Rp 46.000,00 / pcs):
+     5 pcs  x Rp 46.000,00 = Rp 230.000,00
+   - Total Harga Produk (20 pcs):
+     Rp 375.000,00 + Rp 230.000,00 = Rp 605.000,00
+
+5. Perhitungan Blended Unit Price (`harga_satuan_snapshot`):
+   Blended Unit Price = Rp 605.000,00 / 20 pcs
+                      = Rp 30.250,00 / pcs  (TERBUKTI PERSIS Rp 30.250)
+
+6. Hasil Pemecahan Baris di Tabel `order_items` (2 Baris dalam 1 Transaksi):
+   - Baris 1 (mengikat ke Batch 1 - Cuci Gudang):
+     qty = 15 | harga_satuan_snapshot = Rp 30.250,00 | subtotal_item = Rp 453.750,00
+   - Baris 2 (mengikat ke Batch 2 - Reguler):
+     qty = 5  | harga_satuan_snapshot = Rp 30.250,00 | subtotal_item = Rp 151.250,00
+   - Total Item = Rp 453.750,00 + Rp 151.250,00 = Rp 605.000,00
+   - Ongkir     = Rp 15.000,00
+   - Total Tagihan (`orders.total`) = Rp 620.000,00
+
+
+========================================================================================
+SKENARIO B: USER MEMBELI QUANTITY = 40 PCS (Target Blended Price: Rp 38.125,00)
+========================================================================================
+
+1. Request JSON (`POST /api/orders/checkout`):
+   {
+     "items": [
+       {
+         "idProduk": "11111111-1111-1111-1111-111111111111",
+         "quantity": 40
+       }
+     ]
+   }
+
+2. Validasi Stok Lintas-Batch:
+   - Total Stok Tersedia = 15 pcs (Batch 1) + 100 pcs (Batch 2) = 115 pcs.
+   - Diminta = 40 pcs -> VALID (40 <= 115).
+
+3. Alokasi & Pemotongan Stok secara FEFO:
+   - Ambil dari Batch 1 (Cuci Gudang, Exp paling dekat):
+     `qtyTaken_1 = min(15, 40) = 15 pcs`
+     (Sisa stok Batch 1 menjadi 0 pcs; sisa kebutuhan order = 40 - 15 = 25 pcs).
+   - Ambil sisa kebutuhan dari Batch 2 (Reguler):
+     `qtyTaken_2 = min(100, 25) = 25 pcs`
+     (Sisa stok Batch 2 menjadi 100 - 25 = 75 pcs; sisa kebutuhan order = 0 pcs).
+
+4. Perhitungan Komponen Biaya:
+   - Biaya Batch 1 (Cuci Gudang - Diskon 50%):
+     15 pcs x Rp 25.000,00 = Rp 375.000,00
+   - Biaya Batch 2 (Reguler B2B - Diskon 8% = Rp 46.000,00 / pcs):
+     25 pcs x Rp 46.000,00 = Rp 1.150.000,00
+   - Total Harga Produk (40 pcs):
+     Rp 375.000,00 + Rp 1.150.000,00 = Rp 1.525.000,00
+
+5. Perhitungan Blended Unit Price (`harga_satuan_snapshot`):
+   Blended Unit Price = Rp 1.525.000,00 / 40 pcs
+                      = Rp 38.125,00 / pcs  (TERBUKTI PERSIS Rp 38.125)
+
+6. Hasil Pemecahan Baris di Tabel `order_items` (2 Baris dalam 1 Transaksi):
+   - Baris 1 (mengikat ke Batch 1 - Cuci Gudang):
+     qty = 15 | harga_satuan_snapshot = Rp 38.125,00 | subtotal_item = Rp 571.875,00
+   - Baris 2 (mengikat ke Batch 2 - Reguler):
+     qty = 25 | harga_satuan_snapshot = Rp 38.125,00 | subtotal_item = Rp 953.125,00
+   - Total Item = Rp 571.875,00 + Rp 953.125,00 = Rp 1.525.000,00
+   - Ongkir     = Rp 15.000,00
+   - Total Tagihan (`orders.total`) = Rp 1.540.000,00
+
+----------------------------------------------------------------------------------------
+4. POIN KUNCI SAAT DEMO POST DI PRESENTASI BESOK
+----------------------------------------------------------------------------------------
+1. Tunjukkan Request Body yang sangat bersih: hanya `idProduk` dan `quantity` (tanpa `batchId`).
+2. Tunjukkan Response JSON dari `POST /api/orders/checkout`:
+   - Meskipun request hanya mengirim 1 item produk di dalam array `items`, response JSON
+     mengembalikan 2 objek di dalam array `items` (bukti terjadinya Batch Split otomatis
+     antara Batch Cuci Gudang 15 pcs dan Batch Reguler 5 pcs atau 25 pcs).
+   - Tunjukkan bahwa nilai `hargaSatuanSnapshot` pada kedua baris `items` tersebut sama
+     persis (Rp 30.250,00 pada skenario 20 pcs, atau Rp 38.125,00 pada skenario 40 pcs),
+     yang membuktikan algoritma Dynamic Blended Pricing bekerja akurat.
+3. Tunjukkan Log Konsol Spring Boot:
+   - Muncul log `🚨 [B2B CUCI GUDANG] Mengambil 15 pcs dari Batch ... dengan harga clearance 25000.00`
+     sebagai bukti nyata bahwa mesin FEFO memprioritaskan stok yang mendekati expired.
+========================================================================================

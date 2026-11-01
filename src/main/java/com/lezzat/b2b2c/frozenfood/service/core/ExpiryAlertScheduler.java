@@ -27,7 +27,7 @@ public class ExpiryAlertScheduler {
     @Scheduled(cron = "0 * * * * ?") 
     @Transactional
     public void scanAndGenerateExpiryAlerts() {
-        log.info("🚨 [CRON-JOB] Memulai pemindaian stok kedaluwarsa...");
+        log.info("///// [CRON-JOB] Memulai pemindaian stok kedaluwarsa...");
 
         LocalDate thresholdDate = LocalDate.now().plusDays(THRESHOLD_DAYS);
 
@@ -49,6 +49,6 @@ public class ExpiryAlertScheduler {
             }
         }
 
-        log.info("✅ [CRON-JOB] Pemindaian selesai. {} peringatan baru dibuat.", alertCount);
+        log.info(" [CRON-JOB] Pemindaian selesai. {} peringatan baru dibuat.", alertCount);
     }
 }

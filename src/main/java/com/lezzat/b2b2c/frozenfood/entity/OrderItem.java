@@ -3,6 +3,8 @@ package com.lezzat.b2b2c.frozenfood.entity;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -33,11 +35,13 @@ public class OrderItem {
     private UUID idOrderItem;
 
     // Relasi: Baris ini milik Struk yang mana?
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_order", nullable = false)
     private Order order;
 
     // Relasi FEFO Mutlak: Potong stok dari Batch yang mana?
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_prod_batch", nullable = false)
     private ProductBatch productBatch;
@@ -45,7 +49,7 @@ public class OrderItem {
     @Column(name = "qty", nullable = false)
     private Integer quantity;
 
-// Harga Momen Transaksi (Mencegah nota lama berubah kalau harga master naik)
+    // Harga Momen Transaksi (Mencegah nota lama berubah kalau harga master naik)
     @Column(name = "harga_satuan_snapshot", nullable = false, precision = 15, scale = 2)
     private BigDecimal hargaSatuanSnapshot;
 

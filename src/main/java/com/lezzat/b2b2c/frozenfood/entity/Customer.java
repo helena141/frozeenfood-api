@@ -6,6 +6,10 @@ import java.util.UUID;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
+
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -63,7 +67,8 @@ public class Customer {
     @Column(name = "deleted_at", insertable = false, updatable = false)
     private LocalDateTime deletedAt;
 
-// 60 Karakter adalah batas mutlak dari algoritma BCrypt
-    @Column(name = "password", length = 60, nullable = false)
-    private String password;
+@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+@Column(nullable = false, length = 60)
+private String password;
+
 }
