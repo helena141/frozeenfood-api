@@ -1,5 +1,7 @@
 package com.lezzat.b2b2c.frozenfood.dto.response;
 
+import java.util.UUID;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,6 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class AuthResponse {
     
+    private UUID idUser;
     private String token;
     private String nama;
     private String email;

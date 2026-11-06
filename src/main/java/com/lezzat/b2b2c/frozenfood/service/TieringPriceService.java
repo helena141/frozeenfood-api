@@ -174,27 +174,44 @@ public class TieringPriceService {
         );
     }
 
+    /**
+     * Fungsi ini dipanggil oleh OrderService.
+     * Bertugas menjalankan kalkulator di atas, lalu membungkus hasilnya
+     * menjadi wujud List<OrderItem> (tabel order_items) agar siap disimpan ke Database.
+     */
     @Transactional
     public List<OrderItem> processB2BCheckoutItems(Customer customer, Order order, UUID productId, int requestedQty) {
+        
+        // Panggil fungsi utama otak kalkulator FEFO
         B2BCheckoutResult result = executeFefoBlendedPricing(customer, productId, requestedQty);
+        
+        // Siapkan wadah list kosong untuk menampung baris-baris order detail
         List<OrderItem> orderItems = new ArrayList<>();
 
+        // Looping setiap riwayat batch yang berhasil terpotong tadi
         for (BatchDeduction deduction : result.deductedBatches()) {
+            
+            // [CRUCIAL B2B LOGIC]
+            // Subtotal tiap baris dihitung menggunakan Blended Price (harga rata-rata), BUKAN harga asli batch.
+            // Ini untuk memastikan tagihan klien tetap terlihat rapi dan seragam (1 harga).
             BigDecimal subtotalItem = result.blendedUnitPrice()
                     .multiply(BigDecimal.valueOf(deduction.quantityDeducted()))
                     .setScale(2, RoundingMode.HALF_UP);
 
+            // Cetak 1 baris entitas OrderItem (Ini yang membuat pesanan B2B bisa pecah jadi banyak baris item)
             OrderItem item = OrderItem.builder()
-                    .order(order)
-                    .productBatch(deduction.batch())
-                    .quantity(deduction.quantityDeducted())
-                    .hargaSatuanSnapshot(result.blendedUnitPrice())
-                    .subtotalItem(subtotalItem)
+                    .order(order)                               // Ikat dengan master Order
+                    .productBatch(deduction.batch())            // Ikat ke Batch spesifik (demi akurasi audit)
+                    .quantity(deduction.quantityDeducted())     // Jumlah potongan di batch ini
+                    .hargaSatuanSnapshot(result.blendedUnitPrice()) // Tulis harga rata-ratanya
+                    .subtotalItem(subtotalItem)                 // Tulis subtotalnya
                     .build();
 
+            // Masukkan baris baru ini ke dalam wadah list
             orderItems.add(item);
         }
 
+        // Kembalikan list yang sudah matang ke OrderService untuk di-save().
         return orderItems;
     }
 }

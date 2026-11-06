@@ -20,4 +20,10 @@ public interface ProductBatchRepository extends JpaRepository<ProductBatch, UUID
     
     @Query("SELECT pb FROM ProductBatch pb JOIN FETCH pb.product WHERE pb.tanggalExp <= :targetDate AND pb.stokOnline > 0 ORDER BY pb.tanggalExp ASC")
     List<ProductBatch> findBatchesExpiringBefore(@Param("targetDate") LocalDate targetDate);
+
+    @Query("SELECT pb FROM ProductBatch pb JOIN FETCH pb.product ORDER BY pb.tanggalExp ASC")
+    List<ProductBatch> findAllWithProductOrderByTanggalExpAsc();
+
+    @Query("SELECT pb FROM ProductBatch pb JOIN FETCH pb.product WHERE pb.product.idProduk = :productId ORDER BY pb.tanggalExp ASC")
+    List<ProductBatch> findByProductIdWithProductOrderByTanggalExpAsc(@Param("productId") UUID productId);
 }

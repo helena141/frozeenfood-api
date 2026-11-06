@@ -11,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class ProductBatchService {
@@ -34,15 +37,30 @@ public class ProductBatchService {
 
         ProductBatch savedBatch = productBatchRepository.save(batch);
 
+        return toResponse(savedBatch);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductBatchResponse> getBatches(UUID productId) {
+        List<ProductBatch> batches = (productId != null)
+                ? productBatchRepository.findByProductIdWithProductOrderByTanggalExpAsc(productId)
+                : productBatchRepository.findAllWithProductOrderByTanggalExpAsc();
+
+        return batches.stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    private ProductBatchResponse toResponse(ProductBatch batch) {
         return new ProductBatchResponse(
-                savedBatch.getIdProdBatch(),
-                savedBatch.getProduct().getIdProduk(),
-                savedBatch.getProduct().getNamaProduk(),
-                savedBatch.getStokAwal(),
-                savedBatch.getStokOnline(),
-                savedBatch.getTanggalExp(),
-                savedBatch.getHargaOverride(),
-                savedBatch.getDiskon()
+                batch.getIdProdBatch(),
+                batch.getProduct().getIdProduk(),
+                batch.getProduct().getNamaProduk(),
+                batch.getStokAwal(),
+                batch.getStokOnline(),
+                batch.getTanggalExp(),
+                batch.getHargaOverride(),
+                batch.getDiskon()
         );
     }
 }
