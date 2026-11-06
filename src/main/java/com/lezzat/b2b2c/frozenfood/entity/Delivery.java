@@ -3,7 +3,9 @@ package com.lezzat.b2b2c.frozenfood.entity;
 // Entity ini cocok dengan tabel "deliveries" di V1__init_schema.sql
 // + V2__add_deleted_at_deliveries.sql.
 // Kolom DB: id_deliv, id_order, metode_deliv, alamat_tujuan, jarak,
-//           status_delivery, created_at, updated_at, deleted_at.
+//           status_delivery, created_at, updated_at, deleted_at,
+//           + V3: pelaksana, ongkir, sumber_jarak, estimasi_tiba, nama_pengantar, alasan_keputusan.
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -61,6 +63,30 @@ public class Delivery {
 
     @Column(name = "status_delivery", length = 50, nullable = false)
     private String statusDelivery;
+
+    // --- Smart Delivery (V3__smart_delivery_columns.sql) ---
+    // MOTOR_TOKO atau PIHAK_KETIGA
+    @Column(name = "pelaksana", length = 30, nullable = false)
+    @Builder.Default
+    private String pelaksana = "MOTOR_TOKO";
+
+    @Column(name = "ongkir", precision = 15, scale = 2, nullable = false)
+    @Builder.Default
+    private java.math.BigDecimal ongkir = java.math.BigDecimal.ZERO;
+
+    // RUTE_ASLI atau PERKIRAAN
+    @Column(name = "sumber_jarak", length = 20)
+    private String sumberJarak;
+
+    // Jam dinding WIB (Asia/Jakarta)
+    @Column(name = "estimasi_tiba")
+    private LocalDateTime estimasiTiba;
+
+    @Column(name = "nama_pengantar", length = 100)
+    private String namaPengantar;
+
+    @Column(name = "alasan_keputusan", columnDefinition = "TEXT")
+    private String alasanKeputusan;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -9,39 +9,78 @@ import java.math.RoundingMode;
 
 /**
  * Algoritma "Smart Delivery Radius" (B2C).
- * Menghitung jarak garis lurus (Haversine) antara gudang dan alamat tujuan,
- * lalu memvalidasi apakah masih dalam radius aman supaya produk frozen food
- * tidak mencair selama pengiriman instan.
  *
- * NILAI DI BAWAH INI MASIH ASUMSI / PLACEHOLDER — belum ada keputusan bisnis
- * resmi soal radius aman maupun koordinat gudang yang sebenarnya. Sengaja
- * dibuat configurable lewat application.properties/application.yml supaya
- * bisa diubah tanpa compile ulang:
+ * Perhitungan jarak SAAT INI pakai Haversine (jarak garis lurus) dikali
+ * faktor koreksi jalan, sebagai alternatif sementara karena integrasi
+ * Google Routes API (jarak jalan asli) butuh API key + billing yang belum
+ * tersedia. Semua nilai di bawah configurable lewat
+ * application.properties/application.yml supaya gampang diubah nanti:
  *
- *   lezzat.warehouse.latitude=-7.797068
- *   lezzat.warehouse.longitude=110.370529
+ *   lezzat.warehouse.latitude=-7.756318
+ *   lezzat.warehouse.longitude=110.371033
  *   lezzat.delivery.max-radius-km=15.0
+ *   lezzat.delivery.road-distance-factor=1.3
+ *
+ * TODO (upgrade path): kalau budget Google Routes API sudah tersedia,
+ * ganti isi method hitungJarakKm() untuk panggil endpoint
+ * computeRouteMatrix milik Routes API (bukan Distance Matrix API lama yang
+ * sudah legacy sejak Maret 2025), dan hapus logic faktor pengali ini.
+ * Signature method (hitungJarakKm, validasiRadiusAman) sengaja dibiarkan
+ * sama supaya DeliveryService tidak perlu ikut berubah saat upgrade nanti.
  */
 @Service
 public class SmartDeliveryService {
 
     private static final double EARTH_RADIUS_KM = 6371.0;
 
-    @Value("${lezzat.warehouse.latitude:-7.797068}")
+    private final RouteDistanceClient routeDistanceClient;
+
+    public SmartDeliveryService(RouteDistanceClient routeDistanceClient) {
+        this.routeDistanceClient = routeDistanceClient;
+    }
+
+    /** Hasil jarak + asalnya: RUTE_ASLI (OSRM) atau PERKIRAAN (Haversine x faktor). */
+    public record JarakHasil(BigDecimal jarakKm, String sumber) {
+    }
+
+    public double getMaxRadiusKm() {
+        return maxRadiusKm;
+    }
+
+    /** Hybrid: coba rute asli dulu, gagal -> perkiraan. */
+    public JarakHasil hitungJarak(double destLatitude, double destLongitude) {
+        return routeDistanceClient
+                .jarakKm(warehouseLatitude, warehouseLongitude, destLatitude, destLongitude)
+                .map(km -> new JarakHasil(km, "RUTE_ASLI"))
+                .orElseGet(() -> new JarakHasil(hitungJarakKm(destLatitude, destLongitude), "PERKIRAAN"));
+    }
+
+    // Koordinat toko/gudang Lezzat Frozen Food.
+    @Value("${lezzat.warehouse.latitude:-7.756318}")
     private double warehouseLatitude;
 
-    @Value("${lezzat.warehouse.longitude:110.370529}")
+    @Value("${lezzat.warehouse.longitude:110.371033}")
     private double warehouseLongitude;
 
+    // Disepakati: 15 km.
     @Value("${lezzat.delivery.max-radius-km:15.0}")
     private double maxRadiusKm;
 
+    // Faktor koreksi supaya jarak garis lurus (Haversine) lebih mendekati
+    // jarak jalan sebenarnya. Angka 1.3 adalah perkiraan umum (jalan kota
+    // biasanya 1.2x-1.4x lebih panjang dari garis lurus) — sesuaikan kalau
+    // ada data pembanding yang lebih akurat.
+    @Value("${lezzat.delivery.road-distance-factor:1.3}")
+    private double roadDistanceFactor;
+
     /**
-     * Menghitung jarak (km) dari gudang ke koordinat tujuan.
+     * Menghitung perkiraan jarak jalan (km) dari toko ke koordinat tujuan.
+     * Rumus: Haversine (garis lurus) x faktor koreksi jalan.
      */
     public BigDecimal hitungJarakKm(double destLatitude, double destLongitude) {
-        double distance = haversine(warehouseLatitude, warehouseLongitude, destLatitude, destLongitude);
-        return BigDecimal.valueOf(distance).setScale(2, RoundingMode.HALF_UP);
+        double jarakLurus = haversine(warehouseLatitude, warehouseLongitude, destLatitude, destLongitude);
+        double perkiraanJarakJalan = jarakLurus * roadDistanceFactor;
+        return BigDecimal.valueOf(perkiraanJarakJalan).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

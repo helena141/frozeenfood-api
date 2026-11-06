@@ -34,6 +34,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidDeliveryStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidDeliveryStatus(InvalidDeliveryStatusException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateDeliveryException.class)
+    public ResponseEntity<Map<String, Object>> handleDuplicateDelivery(DuplicateDeliveryException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     @ExceptionHandler(InsufficientStockException.class)
     public ResponseEntity<Map<String, Object>> handleInsufficientStock(InsufficientStockException ex) {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
