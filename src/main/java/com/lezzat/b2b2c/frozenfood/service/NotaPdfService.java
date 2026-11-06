@@ -1,8 +1,10 @@
 package com.lezzat.b2b2c.frozenfood.service;
 
+import com.lezzat.b2b2c.frozenfood.entity.Delivery;
 import com.lezzat.b2b2c.frozenfood.entity.Order;
 import com.lezzat.b2b2c.frozenfood.entity.OrderItem;
 import com.lezzat.b2b2c.frozenfood.entity.Payment;
+import com.lezzat.b2b2c.frozenfood.repository.DeliveryRepository;
 import com.lezzat.b2b2c.frozenfood.repository.OrderRepository;
 import com.lezzat.b2b2c.frozenfood.repository.PaymentRepository;
 import com.lowagie.text.Document;
@@ -12,41 +14,63 @@ import com.lowagie.text.FontFactory;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
+import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
- * UC-17 / UC-26: Unduh Nota Pesanan (Satuan & Grosir).
- * Satu service generik untuk kedua UC karena Order sudah generik
- * (dibedakan lewat tipeOrder: B2C/B2B) — tidak perlu 2 service terpisah.
+ * UC-17 / UC-26: Unduh Nota Pesanan (Satuan & Grosir), versi Smart Delivery.
  *
- * ASUMSI yang dipakai di sini, tolong dikonfirmasi/sesuaikan:
- * - customer.getNama() dan customer.getEmail() — field Customer.java belum
- *   pernah saya lihat lengkap, cuma tahu field idUser dari kode sebelumnya.
- *   Kalau nama getter aslinya beda, cukup diganti di method buildCustomerInfo().
- * - Payment yang ditampilkan di nota: Payment TERBARU (createdAt paling akhir)
- *   untuk Order ini, kalau ada lebih dari satu percobaan pembayaran.
+ * Perubahan utama dari versi lama:
+ *  - Ongkir dibaca dari tabel deliveries (hasil Smart Delivery), BUKAN dari
+ *    Order.ongkir yang selalu 0 (placeholder). Order tidak diubah.
+ *  - Total nota = subtotal barang + ongkir dari Delivery.
+ *  - Ada blok pengiriman (alamat, jarak, pelaksana, pengantar, status, estimasi tiba).
+ *  - Jumlah dibayar diambil dari Payment APA ADANYA. Bila berbeda dari total nota,
+ *    hanya ditampilkan catatan informasi (tidak ada perhitungan selisih tagihan).
+ *
+ * ASUMSI (sama seperti sebelumnya): Customer.getNama()/getEmail(); Payment yang
+ * ditampilkan = yang TERBARU.
  */
 @Service
 @RequiredArgsConstructor
 public class NotaPdfService {
 
-    private static final DateTimeFormatter TANGGAL_FORMAT =
-            DateTimeFormatter.ofPattern("dd MMMM yyyy, HH:mm");
+    private static final DateTimeFormatter TANGGAL = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm");
+    private static final Color ABU = new Color(230, 230, 230);
+
+    private static final Font F_JUDUL = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
+    private static final Font F_SUB = FontFactory.getFont(FontFactory.HELVETICA, 10);
+    private static final Font F_BAB = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
+    private static final Font F_LABEL = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
+    private static final Font F_ISI = FontFactory.getFont(FontFactory.HELVETICA, 10);
+    private static final Font F_TOTAL = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+    private static final Font F_CATATAN = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 9);
 
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
+    private final DeliveryRepository deliveryRepository;
+
+    /**
+     * Password pemilik PDF (untuk mengunci izin edit). Bisa diatur di application.yml:
+     * lezzat.nota.owner-password. Kalau tidak diisi, dipakai acak per aplikasi dijalankan
+     * (tidak ada yang perlu mengetahuinya, nota tetap bisa dibuka & dicetak tanpa password).
+     */
+    @Value("${lezzat.nota.owner-password:#{T(java.util.UUID).randomUUID().toString()}}")
+    private String ownerPassword;
 
     @Transactional(readOnly = true)
     public byte[] generateNotaPdf(UUID idOrder) {
@@ -54,124 +78,198 @@ public class NotaPdfService {
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Order dengan id " + idOrder + " tidak ditemukan"));
 
-        Payment paymentTerbaru = paymentRepository.findByOrder_IdOrder(idOrder).stream()
+        Payment payment = paymentRepository.findByOrder_IdOrder(idOrder).stream()
                 .max((a, b) -> a.getCreatedAt().compareTo(b.getCreatedAt()))
                 .orElse(null);
+        Delivery delivery = deliveryRepository.findByOrder_IdOrder(idOrder).orElse(null);
 
         try {
-            return buildPdf(order, paymentTerbaru);
+            return buildPdf(order, payment, delivery);
         } catch (Exception e) {
-            // Dibungkus RuntimeException supaya ditangkap GlobalExceptionHandler
-            // sebagai 500 dengan pesan jelas, bukan stack trace OpenPDF mentah.
             throw new RuntimeException("Gagal membuat PDF nota: " + e.getMessage(), e);
         }
     }
 
-    private byte[] buildPdf(Order order, Payment payment) throws Exception {
-        Document document = new Document(PageSize.A4, 36, 36, 54, 36);
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        PdfWriter.getInstance(document, outputStream);
-        document.open();
+    private byte[] buildPdf(Order order, Payment payment, Delivery delivery) throws Exception {
+        Document doc = new Document(PageSize.A4, 40, 40, 50, 40);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PdfWriter writer = PdfWriter.getInstance(doc, out);
+        // Kunci PDF: boleh dibuka, dilihat, dicetak, dibaca screen reader;
+        // TIDAK boleh diubah, disalin isinya, atau diberi anotasi. Harus dipanggil sebelum doc.open().
+        writer.setEncryption(null, ownerPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                PdfWriter.ALLOW_PRINTING | PdfWriter.ALLOW_SCREENREADERS,
+                PdfWriter.STANDARD_ENCRYPTION_128);
+        doc.open();
 
-        Font fontJudul = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
-        Font fontSubjudul = FontFactory.getFont(FontFactory.HELVETICA, 10);
-        Font fontLabel = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
-        Font fontNormal = FontFactory.getFont(FontFactory.HELVETICA, 11);
-        Font fontHeaderTabel = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
-        Font fontIsiTabel = FontFactory.getFont(FontFactory.HELVETICA, 10);
-
-        Paragraph judul = new Paragraph("NOTA PESANAN - LEZZAT FROZEN FOOD", fontJudul);
+        // ===== Header =====
+        Paragraph judul = new Paragraph("LEZZAT FROZEN FOOD", F_JUDUL);
         judul.setAlignment(Element.ALIGN_CENTER);
-        document.add(judul);
+        doc.add(judul);
+        Paragraph sub = new Paragraph("NOTA " + labelTipe(order.getTipeOrder()).toUpperCase(Locale.ROOT), F_SUB);
+        sub.setAlignment(Element.ALIGN_CENTER);
+        sub.setSpacingAfter(14);
+        doc.add(sub);
 
-        Paragraph subjudul = new Paragraph(
-                "Jenis Pesanan: " + labelTipeOrder(order.getTipeOrder()), fontSubjudul);
-        subjudul.setAlignment(Element.ALIGN_CENTER);
-        subjudul.setSpacingAfter(16);
-        document.add(subjudul);
-
-        document.add(buildInfoParagraph("No. Pesanan", order.getIdOrder().toString(), fontLabel, fontNormal));
-        document.add(buildInfoParagraph("Tanggal", order.getCreatedAt() != null
-                ? order.getCreatedAt().format(TANGGAL_FORMAT) : "-", fontLabel, fontNormal));
-        document.add(buildInfoParagraph("Status Pesanan", order.getStatus(), fontLabel, fontNormal));
-        document.add(buildInfoParagraph("Pelanggan", buildCustomerInfo(order), fontLabel, fontNormal));
-
+        // ===== Info pesanan =====
+        PdfPTable info = new PdfPTable(new float[]{1.4f, 4f});
+        info.setWidthPercentage(100);
+        baris(info, "No. Pesanan", order.getIdOrder().toString());
+        baris(info, "Tanggal", order.getCreatedAt() != null ? order.getCreatedAt().format(TANGGAL) : "-");
+        baris(info, "Status Pesanan", order.getStatus());
+        baris(info, "Pelanggan", infoPelanggan(order));
         if (order.getCatatan() != null && !order.getCatatan().isBlank()) {
-            document.add(buildInfoParagraph("Catatan", order.getCatatan(), fontLabel, fontNormal));
+            baris(info, "Catatan", order.getCatatan());
+        }
+        doc.add(info);
+
+        // ===== Tabel barang =====
+        PdfPTable tabel = new PdfPTable(new float[]{4f, 1f, 2.2f, 2.2f});
+        tabel.setWidthPercentage(100);
+        tabel.setSpacingBefore(14);
+        tabel.setHeaderRows(1);
+        header(tabel, "Produk", Element.ALIGN_LEFT);
+        header(tabel, "Qty", Element.ALIGN_CENTER);
+        header(tabel, "Harga Satuan", Element.ALIGN_RIGHT);
+        header(tabel, "Subtotal", Element.ALIGN_RIGHT);
+
+        BigDecimal subtotalBarang = BigDecimal.ZERO;
+        for (OrderItem item : order.getItems()) {
+            String nama = item.getProductBatch() != null && item.getProductBatch().getProduct() != null
+                    ? item.getProductBatch().getProduct().getNamaProduk() : "(produk tidak diketahui)";
+            isi(tabel, nama, Element.ALIGN_LEFT);
+            isi(tabel, String.valueOf(item.getQuantity()), Element.ALIGN_CENTER);
+            isi(tabel, rupiah(item.getHargaSatuanSnapshot()), Element.ALIGN_RIGHT);
+            isi(tabel, rupiah(item.getSubtotalItem()), Element.ALIGN_RIGHT);
+            if (item.getSubtotalItem() != null) {
+                subtotalBarang = subtotalBarang.add(item.getSubtotalItem());
+            }
+        }
+        doc.add(tabel);
+
+        // ===== Ringkasan biaya =====
+        boolean ongkirBelumPasti = delivery != null
+                && "MENUNGGU_KONFIRMASI_ADMIN".equals(delivery.getStatusDelivery());
+        BigDecimal ongkir = (delivery != null && delivery.getOngkir() != null && !ongkirBelumPasti)
+                ? delivery.getOngkir() : BigDecimal.ZERO;
+        BigDecimal total = subtotalBarang.add(ongkir);
+
+        PdfPTable ringkas = new PdfPTable(new float[]{3f, 2f});
+        ringkas.setWidthPercentage(55);
+        ringkas.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        ringkas.setSpacingBefore(8);
+        barisBiaya(ringkas, "Subtotal Barang", rupiah(subtotalBarang), F_ISI);
+        String labelOngkir = ongkirBelumPasti ? "Menunggu konfirmasi"
+                : (delivery == null ? "Belum ada data pengiriman"
+                : (ongkir.signum() == 0 ? "GRATIS" : rupiah(ongkir)));
+        barisBiaya(ringkas, "Ongkos Kirim", labelOngkir, F_ISI);
+        barisBiaya(ringkas, "TOTAL TAGIHAN", rupiah(total), F_TOTAL);
+        doc.add(ringkas);
+
+        if (ongkirBelumPasti) {
+            Paragraph p = new Paragraph("Ongkir pengiriman pihak ketiga masih menunggu konfirmasi admin; "
+                    + "total di atas belum termasuk ongkir tersebut.", F_CATATAN);
+            p.setAlignment(Element.ALIGN_RIGHT);
+            p.setSpacingBefore(4);
+            doc.add(p);
         }
 
-        Paragraph spacer = new Paragraph(" ");
-        document.add(spacer);
-
-        PdfPTable table = new PdfPTable(new float[]{4f, 1.3f, 2f, 2f});
-        table.setWidthPercentage(100);
-        table.setSpacingBefore(8);
-
-        addHeaderCell(table, "Produk", fontHeaderTabel);
-        addHeaderCell(table, "Qty", fontHeaderTabel);
-        addHeaderCell(table, "Harga Satuan", fontHeaderTabel);
-        addHeaderCell(table, "Subtotal", fontHeaderTabel);
-
-        List<OrderItem> items = order.getItems();
-        for (OrderItem item : items) {
-            String namaProduk = item.getProductBatch() != null && item.getProductBatch().getProduct() != null
-                    ? item.getProductBatch().getProduct().getNamaProduk()
-                    : "(produk tidak diketahui)";
-
-            table.addCell(new PdfPCell(new Phrase(namaProduk, fontIsiTabel)));
-
-            PdfPCell qtyCell = new PdfPCell(new Phrase(String.valueOf(item.getQuantity()), fontIsiTabel));
-            qtyCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-            table.addCell(qtyCell);
-
-            PdfPCell hargaCell = new PdfPCell(new Phrase(formatRupiah(item.getHargaSatuanSnapshot()), fontIsiTabel));
-            hargaCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            table.addCell(hargaCell);
-
-            PdfPCell subtotalCell = new PdfPCell(new Phrase(formatRupiah(item.getSubtotalItem()), fontIsiTabel));
-            subtotalCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            table.addCell(subtotalCell);
-        }
-
-        document.add(table);
-
-        Paragraph ongkir = new Paragraph(
-                "Ongkos Kirim: " + formatRupiah(order.getOngkir()), fontNormal);
-        ongkir.setAlignment(Element.ALIGN_RIGHT);
-        ongkir.setSpacingBefore(10);
-        document.add(ongkir);
-
-        Paragraph total = new Paragraph(
-                "TOTAL TAGIHAN: " + formatRupiah(order.getTotalTagihan()),
-                FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13));
-        total.setAlignment(Element.ALIGN_RIGHT);
-        total.setSpacingAfter(16);
-        document.add(total);
-
-        if (payment != null) {
-            document.add(buildInfoParagraph("Metode Pembayaran", payment.getMetodePay(), fontLabel, fontNormal));
-            document.add(buildInfoParagraph("Status Pembayaran", payment.getStatus(), fontLabel, fontNormal));
+        // ===== Pengiriman =====
+        doc.add(bab("Pengiriman"));
+        if (delivery == null) {
+            doc.add(new Paragraph("Belum ada data pengiriman untuk pesanan ini.", F_ISI));
         } else {
-            document.add(buildInfoParagraph("Status Pembayaran", "Belum ada data pembayaran", fontLabel, fontNormal));
+            PdfPTable kirim = new PdfPTable(new float[]{1.4f, 4f});
+            kirim.setWidthPercentage(100);
+            baris(kirim, "Alamat Tujuan", delivery.getAlamatTujuan());
+            baris(kirim, "Jarak", delivery.getJarak() != null
+                    ? String.format(Locale.US, "%.1f km", delivery.getJarak()).replace('.', ',') : "-");
+            baris(kirim, "Pelaksana", labelPelaksana(delivery.getPelaksana()));
+            baris(kirim, "Pengantar", namaPengantar(delivery));
+            baris(kirim, "Status", delivery.getStatusDelivery());
+            baris(kirim, "Estimasi Tiba", delivery.getEstimasiTiba() != null
+                    ? delivery.getEstimasiTiba().format(TANGGAL) + " WIB" : "-");
+            doc.add(kirim);
         }
 
-        Paragraph footer = new Paragraph(
-                "\nTerima kasih telah berbelanja di Lezzat Frozen Food.",
-                FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 9));
-        footer.setAlignment(Element.ALIGN_CENTER);
-        footer.setSpacingBefore(24);
-        document.add(footer);
+        // ===== Pembayaran =====
+        doc.add(bab("Pembayaran"));
+        if (payment == null) {
+            doc.add(new Paragraph("Belum ada data pembayaran.", F_ISI));
+        } else {
+            PdfPTable bayar = new PdfPTable(new float[]{1.4f, 4f});
+            bayar.setWidthPercentage(100);
+            baris(bayar, "Metode", payment.getMetodePay());
+            baris(bayar, "Status", payment.getStatus());
+            baris(bayar, "Jumlah Dibayar", rupiah(payment.getJumlah()));
+            doc.add(bayar);
+            if (payment.getJumlah() != null && payment.getJumlah().compareTo(total) != 0) {
+                Paragraph p = new Paragraph("Catatan: jumlah pembayaran tercatat berbeda dari total tagihan nota. "
+                        + "Mohon dikonfirmasi ke admin bila diperlukan.", F_CATATAN);
+                p.setSpacingBefore(4);
+                doc.add(p);
+            }
+        }
 
-        document.close();
-        return outputStream.toByteArray();
+        Paragraph footer = new Paragraph("Terima kasih telah berbelanja di Lezzat Frozen Food.", F_CATATAN);
+        footer.setAlignment(Element.ALIGN_CENTER);
+        footer.setSpacingBefore(28);
+        doc.add(footer);
+
+        doc.close();
+        return out.toByteArray();
     }
 
-    private String buildCustomerInfo(Order order) {
+    // ----- helper tampilan -----
+
+    private Paragraph bab(String teks) {
+        Paragraph p = new Paragraph(teks, F_BAB);
+        p.setSpacingBefore(16);
+        p.setSpacingAfter(4);
+        return p;
+    }
+
+    private void baris(PdfPTable t, String label, String nilai) {
+        PdfPCell a = new PdfPCell(new Phrase(label, F_LABEL));
+        a.setBorder(Rectangle.NO_BORDER);
+        a.setPadding(2);
+        PdfPCell b = new PdfPCell(new Phrase(nilai != null ? nilai : "-", F_ISI));
+        b.setBorder(Rectangle.NO_BORDER);
+        b.setPadding(2);
+        t.addCell(a);
+        t.addCell(b);
+    }
+
+    private void header(PdfPTable t, String teks, int align) {
+        PdfPCell c = new PdfPCell(new Phrase(teks, F_LABEL));
+        c.setBackgroundColor(ABU);
+        c.setPadding(6);
+        c.setHorizontalAlignment(align);
+        t.addCell(c);
+    }
+
+    private void isi(PdfPTable t, String teks, int align) {
+        PdfPCell c = new PdfPCell(new Phrase(teks, F_ISI));
+        c.setPadding(5);
+        c.setHorizontalAlignment(align);
+        t.addCell(c);
+    }
+
+    private void barisBiaya(PdfPTable t, String label, String nilai, Font font) {
+        PdfPCell a = new PdfPCell(new Phrase(label, font));
+        a.setBorder(Rectangle.NO_BORDER);
+        a.setPadding(3);
+        PdfPCell b = new PdfPCell(new Phrase(nilai, font));
+        b.setBorder(Rectangle.NO_BORDER);
+        b.setPadding(3);
+        b.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        t.addCell(a);
+        t.addCell(b);
+    }
+
+    private String infoPelanggan(Order order) {
         if (order.getCustomer() == null) {
             return "-";
         }
-        // ASUMSI nama getter: getNama()/getEmail(). Sesuaikan kalau beda
-        // dengan field asli di Customer.java.
         try {
             String nama = order.getCustomer().getNama();
             String email = order.getCustomer().getEmail();
@@ -181,32 +279,33 @@ public class NotaPdfService {
         }
     }
 
-    private String labelTipeOrder(String tipeOrder) {
-        if ("B2B".equalsIgnoreCase(tipeOrder)) {
-            return "Pesanan Grosir (B2B)";
+    private String labelTipe(String tipe) {
+        return "B2B".equalsIgnoreCase(tipe) ? "Pesanan Grosir (B2B)" : "Pesanan Satuan (B2C)";
+    }
+
+    /** Nama pengantar; bila kosong: motor toko -> "Karyawan toko", pihak ketiga -> "Belum ditentukan". */
+    private String namaPengantar(Delivery d) {
+        if (d.getNamaPengantar() != null && !d.getNamaPengantar().isBlank()) {
+            return d.getNamaPengantar();
         }
-        return "Pesanan Satuan (B2C)";
+        return "PIHAK_KETIGA".equals(d.getPelaksana()) ? "Belum ditentukan" : "Karyawan toko";
     }
 
-    private Paragraph buildInfoParagraph(String label, String value, Font fontLabel, Font fontNormal) {
-        Paragraph p = new Paragraph();
-        p.add(new Phrase(label + ": ", fontLabel));
-        p.add(new Phrase(value != null ? value : "-", fontNormal));
-        p.setSpacingAfter(4);
-        return p;
+    private String labelPelaksana(String p) {
+        if ("PIHAK_KETIGA".equals(p)) {
+            return "Pihak ketiga";
+        }
+        return "Karyawan toko (motor)";
     }
 
-    private void addHeaderCell(PdfPTable table, String text, Font font) {
-        PdfPCell cell = new PdfPCell(new Phrase(text, font));
-        cell.setBackgroundColor(new java.awt.Color(230, 230, 230));
-        cell.setPadding(6);
-        table.addCell(cell);
-    }
-
-    private String formatRupiah(BigDecimal value) {
-        if (value == null) {
+    /** Format Indonesia: Rp 1.234.500 (tanpa desimal bila bulat). */
+    private String rupiah(BigDecimal v) {
+        if (v == null) {
             return "Rp 0";
         }
-        return "Rp " + String.format("%,.2f", value).replace(',', '.');
+        boolean bulat = v.stripTrailingZeros().scale() <= 0;
+        String s = String.format(Locale.US, bulat ? "%,.0f" : "%,.2f", v);
+        s = s.replace(',', '#').replace('.', ',').replace('#', '.');
+        return "Rp " + s;
     }
 }

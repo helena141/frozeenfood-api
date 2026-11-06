@@ -16,6 +16,7 @@ spring:
 lezzat:
   delivery:
     max-radius-km: 15.0
+    max-service-km: 50.0
     road-distance-factor: 1.3
     fee: { free-km: 5, base-fee: 10000, step-fee: 1000, max-fee: 35000 }
     motor: { drivers: 2, max-weight-kg: 15, max-volume-liter: 40, avg-speed-kmh: 25, prep-minutes: 20, max-cold-chain-minutes: 60, queue-delay-minutes: 30 }

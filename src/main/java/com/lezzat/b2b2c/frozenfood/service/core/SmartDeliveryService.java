@@ -43,6 +43,14 @@ public class SmartDeliveryService {
     public record JarakHasil(BigDecimal jarakKm, String sumber) {
     }
 
+    // Batas MUTLAK layanan pengiriman (motor toko + pihak ketiga). Lebih dari ini ditolak.
+    @Value("${lezzat.delivery.max-service-km:50.0}")
+    private double maxServiceKm;
+
+    public double getMaxServiceKm() {
+        return maxServiceKm;
+    }
+
     public double getMaxRadiusKm() {
         return maxRadiusKm;
     }
