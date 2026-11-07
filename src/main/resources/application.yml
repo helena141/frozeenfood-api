@@ -13,4 +13,14 @@ spring:
     clean-disabled: false
     clean-on-validation-error: true
     baseline-on-migrate: true
-    
+lezzat:
+  delivery:
+    max-radius-km: 15.0
+    max-service-km: 50.0
+    road-distance-factor: 1.3
+    fee: { free-km: 5, base-fee: 10000, step-fee: 1000, max-fee: 35000 }
+    motor: { drivers: 2, max-weight-kg: 15, max-volume-liter: 40, avg-speed-kmh: 25, prep-minutes: 20, max-cold-chain-minutes: 60, queue-delay-minutes: 30 }
+    schedule: { open: "09:00", close: "21:00", same-day-cutoff: "15:00", zone: Asia/Jakarta }
+    routing: { enabled: false }
+    unit: { weight-to-kg: 1.0, volume-to-liter: 1.0 }   # ganti 0.001 kalau berat dalam gram
+
