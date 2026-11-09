@@ -32,6 +32,7 @@ CREATE TABLE customers (
     tipe_akun VARCHAR(20) NOT NULL CHECK (
         tipe_akun IN ('B2C', 'B2B', 'ADMIN')
     ),
+    foto_profil VARCHAR(255) NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -47,7 +48,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Master data katalog produk beku.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE products (
-    id_produk UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    id_produk VARCHAR(15) PRIMARY KEY,
     nama_produk VARCHAR(200) NOT NULL,
     deskripsi_produk TEXT,
     kategori VARCHAR(100) NOT NULL,
@@ -71,7 +72,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE tiering_prices (
     id_tiering UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    id_produk UUID NOT NULL,
+    id_produk VARCHAR(25) NOT NULL,
     min_qty INT NOT NULL CHECK (min_qty > 0),
     max_qty INT NOT NULL CHECK (max_qty >= min_qty),
     harga_per_unit NUMERIC(15, 2) NOT NULL CHECK (harga_per_unit >= 0),
@@ -90,8 +91,8 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- Jantung logika FEFO. Stok dipisah berdasarkan tanggal kedaluwarsa.
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE produk_batches (
-    id_prod_batch UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    id_produk UUID NOT NULL,
+    id_prod_batch VARCHAR(25) PRIMARY KEY,
+    id_produk VARCHAR(15) NOT NULL,
     stok_awal INT NOT NULL CHECK (stok_awal >= 0),
     stok_online INT NOT NULL CHECK (
         stok_online >= 0
@@ -119,7 +120,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 -- ----------------------------------------------------------------------------------------
 CREATE TABLE expiry_alerts (
     id_expiry UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    id_prod_batch UUID NOT NULL,
+    id_prod_batch VARCHAR(25) NOT NULL,
     hari_sebelum INT NOT NULL CHECK (hari_sebelum > 0),
     send_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -160,7 +161,7 @@ FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 CREATE TABLE order_items (
     id_order_item UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     id_order UUID NOT NULL,
-    id_prod_batch UUID NOT NULL,
+    id_prod_batch VARCHAR(25) NOT NULL, 
     qty INT NOT NULL CHECK (qty > 0),
     harga_satuan_snapshot NUMERIC(15, 2) NOT NULL CHECK (harga_satuan_snapshot >= 0),
     subtotal_item NUMERIC(15, 2) NOT NULL CHECK (subtotal_item >= 0),

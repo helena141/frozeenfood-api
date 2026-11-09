@@ -11,8 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,24 +26,46 @@ public class ProductBatchService {
 
     @Transactional
     public ProductBatchResponse createBatch(ProductBatchRequest request) {
+        // 1. Cari produk master menggunakan ID String (Contoh: "NGT-001")
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new EntityNotFoundException("Produk master dengan ID " + request.productId() + " tidak ditemukan"));
 
-        ProductBatch batch = ProductBatch.builder()
-                .product(product)
-                .stokAwal(request.stokAwal())
-                .stokOnline(request.stokAwal()) // Saat pertama datang, stok online sama dengan stok fisik awal
-                .tanggalExp(request.tanggalExp())
-                .hargaOverride(request.hargaOverride())
-                .diskon(request.diskon())
-                .build();
+        // 2. Generate ID Batch Opsi A (Contoh: "B-NGT001-270515")
+        String customBatchId = generateBatchId(product.getIdProduk(), request.tanggalExp());
 
-        ProductBatch savedBatch = productBatchRepository.save(batch);
+        // 3. Cek apakah batch dengan produk & tanggal expired yang persis sama sudah ada di gudang
+        Optional<ProductBatch> existingBatchOpt = productBatchRepository.findById(customBatchId);
+
+        ProductBatch savedBatch;
+        if (existingBatchOpt.isPresent()) {
+            // Jika sudah ada, akumulasikan stoknya agar tidak bentrok Primary Key
+            ProductBatch existingBatch = existingBatchOpt.get();
+            existingBatch.setStokAwal(existingBatch.getStokAwal() + request.stokAwal());
+            existingBatch.setStokOnline(existingBatch.getStokOnline() + request.stokAwal());
+            if (request.hargaOverride() != null) {
+                existingBatch.setHargaOverride(request.hargaOverride());
+            }
+            if (request.diskon() != null) {
+                existingBatch.setDiskon(request.diskon());
+            }
+            savedBatch = productBatchRepository.save(existingBatch);
+        } else {
+            // Jika belum ada, buat batch baru dengan customBatchId
+            ProductBatch batch = ProductBatch.builder()
+                    .idProdBatch(customBatchId) // <-- Pasang ID Batch hasil generate
+                    .product(product)
+                    .stokAwal(request.stokAwal())
+                    .stokOnline(request.stokAwal()) // Saat pertama datang, stok online sama dengan stok fisik awal
+                    .tanggalExp(request.tanggalExp())
+                    .hargaOverride(request.hargaOverride())
+                    .diskon(request.diskon())
+                    .build();
+
+            savedBatch = productBatchRepository.save(batch);
+        }
 
         return mapToResponse(savedBatch);
     }
-
-    // === FITUR TAMPIL DATA BATCH DITAMBAHKAN DI SINI ===
 
     // Mengambil semua data batch (untuk admin/gudang)
     @Transactional(readOnly = true)
@@ -51,16 +75,26 @@ public class ProductBatchService {
                 .collect(Collectors.toList());
     }
 
-    // Logika FEFO: Mengambil batch yang stoknya masih ada untuk produk tertentu
+    // Parameter idProduk diubah dari UUID menjadi String
     @Transactional(readOnly = true)
-    public List<ProductBatchResponse> getAvailableBatches(UUID idProduk) {
-        // Menggunakan nama method dari "KODE BONY" dan mengisi minStok dengan angka 0
+    public List<ProductBatchResponse> getAvailableBatches(String idProduk) {
         return productBatchRepository.findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(idProduk, 0).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
-    // Helper method untuk konversi ke Response biar kodenya tidak berulang
+    // === HELPER 1: GENERATOR ID BATCH OPSI A (B-NGT001-270515) ===
+    private String generateBatchId(String idProduk, LocalDate tanggalExp) {
+        // Hilangkan tanda strip pada ID Produk ("NGT-001" -> "NGT001")
+        String cleanProductCode = idProduk.replace("-", "");
+        
+        // Format tanggal expired menjadi 6 digit YYMMDD (misal: 2027-05-15 -> "270515")
+        String expFormatted = tanggalExp.format(DateTimeFormatter.ofPattern("yyMMdd"));
+        
+        return "B-" + cleanProductCode + "-" + expFormatted;
+    }
+
+    // === HELPER 2: KONVERSI KE RESPONSE DTO ===
     private ProductBatchResponse mapToResponse(ProductBatch batch) {
         return new ProductBatchResponse(
                 batch.getIdProdBatch(),

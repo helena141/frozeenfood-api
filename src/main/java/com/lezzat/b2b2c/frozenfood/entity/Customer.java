@@ -57,7 +57,7 @@ public class Customer {
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     @Column(name = "deleted_at", insertable = false, updatable = false)
@@ -66,4 +66,7 @@ public class Customer {
 // 60 Karakter adalah batas mutlak dari algoritma BCrypt
     @Column(name = "password", length = 60, nullable = false)
     private String password;
+
+    @Column(name = "foto_profil", length = 255)
+    private String fotoProfil;
 }

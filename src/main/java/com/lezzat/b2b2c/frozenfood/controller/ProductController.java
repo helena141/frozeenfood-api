@@ -9,7 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
+
 
 @RestController
 @RequestMapping("/api/products")
@@ -23,15 +23,15 @@ public class ProductController {
         return ResponseEntity.ok(productService.getAllProducts());
     }
 
-    // === FITUR SEARCH DITAMBAHKAN DI SINI ===
+    // === FITUR SEARCH ===
     @GetMapping("/search")
     public ResponseEntity<List<ProductCatalogResponse>> searchProducts(@RequestParam String keyword) {
         return ResponseEntity.ok(productService.searchProducts(keyword));
     }
-    // ========================================
 
+    // Parameter @PathVariable diubah dari UUID menjadi String (contoh: /api/products/NGT-001)
     @GetMapping("/{id}")
-    public ResponseEntity<ProductCatalogResponse> getProductById(@PathVariable UUID id) {
+    public ResponseEntity<ProductCatalogResponse> getProductById(@PathVariable String id) {
         return ResponseEntity.ok(productService.getProductById(id));
     }
 
@@ -40,15 +40,17 @@ public class ProductController {
         return new ResponseEntity<>(productService.createProduct(request), HttpStatus.CREATED);
     }
 
+    // Parameter @PathVariable diubah dari UUID menjadi String
     @PutMapping("/{id}")
     public ResponseEntity<ProductCatalogResponse> updateProduct(
-            @PathVariable UUID id, 
+            @PathVariable String id, 
             @RequestBody ProductRequest request) {
         return ResponseEntity.ok(productService.updateProduct(id, request));
     }
 
+    // Parameter @PathVariable diubah dari UUID menjadi String
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable UUID id) {
+    public ResponseEntity<Void> deleteProduct(@PathVariable String id) {
         productService.deleteProduct(id);
         return ResponseEntity.noContent().build();
     }

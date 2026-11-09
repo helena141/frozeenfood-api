@@ -10,7 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
+// import java.util.UUID; sudah dihapus
 
 @RestController
 @RequestMapping("/api/inventory/batches")
@@ -35,8 +35,9 @@ public class ProductBatchController {
     }
 
     // GET: Lihat stok yang tersedia per produk (Logika FEFO)
+    // Parameter diubah dari UUID menjadi String (Contoh URL: /api/inventory/batches/product/NGT-001)
     @GetMapping("/product/{idProduk}")
-    public ResponseEntity<List<ProductBatchResponse>> getAvailableBatches(@PathVariable UUID idProduk) {
+    public ResponseEntity<List<ProductBatchResponse>> getAvailableBatches(@PathVariable String idProduk) {
         return ResponseEntity.ok(productBatchService.getAvailableBatches(idProduk));
     }
 }

@@ -42,7 +42,7 @@ public class AuthService {
         
         customer.setNoTelp(request.getNoTelp());
         customer.setAlamat(request.getAlamat());
-        customer.setTipeAkun(request.getTipeAkun().toUpperCase());
+        customer.setTipeAkun(request.getTipeAkun().trim().toUpperCase());
         customer.setIsActive(true); // Akun baru langsung aktif
 
       // 3. Simpan ke database

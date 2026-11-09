@@ -6,14 +6,14 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.util.UUID;
+// import java.util.UUID; sudah dihapus karena tidak dipakai lagi
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductCatalogResponse {
-    private UUID idProduk;
+    private String idProduk; // Diubah dari UUID menjadi String (Contoh: "NGT-001")
     private String namaProduk;
     private String deskripsiProduk;
     private String kategori;
