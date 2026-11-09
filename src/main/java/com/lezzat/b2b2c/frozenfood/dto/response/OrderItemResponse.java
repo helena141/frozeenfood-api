@@ -5,9 +5,9 @@ import java.util.UUID;
 
 public record OrderItemResponse(
         UUID idOrderItem,
-        UUID idProduk,
+        String idProduk,
         String namaProduk,
-        UUID idProdBatch,
+        String idProdBatch,
         Integer quantity,
         BigDecimal hargaSatuanSnapshot,
         BigDecimal subtotalItem

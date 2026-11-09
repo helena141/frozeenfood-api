@@ -1,7 +1,6 @@
 package com.lezzat.b2b2c.frozenfood.dto.request;
 
 import java.util.List;
-import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 
@@ -23,7 +22,7 @@ public class OrderRequest {
 
         @NotNull(message = "ID Produk tidak boleh kosong")
         @JsonAlias({"productId", "id_produk"})
-        private UUID idProduk;
+        private String idProduk;
 
         @Min(value = 1, message = "Kuantitas minimal 1")
         private int quantity;

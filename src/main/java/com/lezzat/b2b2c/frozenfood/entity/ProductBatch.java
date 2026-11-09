@@ -1,8 +1,8 @@
 package com.lezzat.b2b2c.frozenfood.entity;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
@@ -10,8 +10,6 @@ import org.hibernate.annotations.SQLRestriction;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -32,10 +30,10 @@ import lombok.Setter;
 @SQLDelete(sql = "UPDATE produk_batches SET deleted_at = CURRENT_TIMESTAMP WHERE id_prod_batch = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class ProductBatch {
+    
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id_prod_batch", updatable = false, nullable = false)
-    private UUID idProdBatch;
+    @Column(name = "id_prod_batch", updatable = false, nullable = false, length = 25)
+    private String idProdBatch;
 
     // RELASI KRUSIAL: Menunjuk kembali ke entitas induk (Product)
     @ManyToOne(fetch = FetchType.LAZY)
@@ -68,7 +66,3 @@ public class ProductBatch {
     @Column(name = "deleted_at", insertable = false, updatable = false)
     private LocalDateTime deletedAt;
 }
-
-    
-
-

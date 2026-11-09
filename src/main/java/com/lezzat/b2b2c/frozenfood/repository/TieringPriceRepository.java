@@ -6,11 +6,9 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
 import com.lezzat.b2b2c.frozenfood.entity.TieringPrice;
 
-@Repository
 public interface TieringPriceRepository extends JpaRepository<TieringPrice, UUID> {
 
     /**
@@ -19,7 +17,7 @@ public interface TieringPriceRepository extends JpaRepository<TieringPrice, UUID
      */
     @Query("SELECT t FROM TieringPrice t WHERE t.product.idProduk = :productId AND :quantity >= t.minQty AND :quantity <= t.maxQty")
     Optional<TieringPrice> findDynamicB2BPrice(
-        @Param("productId") UUID productId, 
+        @Param("productId") String productId, 
         @Param("quantity") int quantity
     );
 }

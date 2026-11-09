@@ -2,31 +2,32 @@ package com.lezzat.b2b2c.frozenfood.service.core;
 
 import com.lezzat.b2b2c.frozenfood.entity.ProductBatch;
 import com.lezzat.b2b2c.frozenfood.repository.ProductBatchRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class FefoInventoryService {
 
     private final ProductBatchRepository productBatchRepository;
-
-    // Peringatan @Autowired dihapus karena Constructor Injection di Spring Boot modern tidak memerlukannya
-    public FefoInventoryService(ProductBatchRepository productBatchRepository) {
-        this.productBatchRepository = productBatchRepository;
-    }
 
     /**
      * Algoritma utama untuk mengurangi stok berdasarkan FEFO
      */
     @Transactional
-    public void deductStockFefo(UUID productId, Integer quantityToDeduct) {
+    public void deductStockFefo(String productId, Integer quantityToDeduct) { // Ubah UUID jadi String
         
+        // Fail-Fast: Tolak jika kuantitas pemotongan tidak valid
+        if (quantityToDeduct == null || quantityToDeduct <= 0) {
+            throw new IllegalArgumentException("Kuantitas pemotongan stok harus lebih dari 0");
+        }
+
         // 1. Ambil data batch (stok online > 0) diurutkan dari yang paling cepat kedaluwarsa
         List<ProductBatch> availableBatches = productBatchRepository
-               .findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(productId, 0);
+                .findByProduct_IdProdukAndStokOnlineGreaterThanOrderByTanggalExpAsc(productId, 0);
 
         // 2. Cek apakah total stok di gudang mencukupi permintaan
         int totalAvailableStock = availableBatches.stream()
@@ -34,7 +35,7 @@ public class FefoInventoryService {
                 .sum();
 
         if (totalAvailableStock < quantityToDeduct) {
-            throw new RuntimeException("Gagal: Stok tidak mencukupi. Permintaan: " + quantityToDeduct + ", Tersedia: " + totalAvailableStock);
+            throw new IllegalArgumentException("Gagal: Stok tidak mencukupi. Permintaan: " + quantityToDeduct + ", Tersedia: " + totalAvailableStock);
         }
 
         // 3. Proses potong stok dari batch terlama (FEFO)
@@ -42,17 +43,16 @@ public class FefoInventoryService {
 
         for (ProductBatch batch : availableBatches) {
             if (remainingToDeduct <= 0) {
-                break; // Jika kuantitas sudah terpenuhi, hentikan perulangan
+                break;
             }
 
-            int currentBatchStock = batch.getStokOnline(); // <-- Diperbaiki
+            int currentBatchStock = batch.getStokOnline(); 
             
-            // Tentukan jumlah yang akan diambil dari batch ini (ambil mana yang lebih kecil)
+            // Tentukan jumlah yang akan diambil dari batch ini
             int deductFromThisBatch = Math.min(currentBatchStock, remainingToDeduct);
             
-            // Perbarui sisa stok online di batch tersebut
-            batch.setStokOnline(currentBatchStock - deductFromThisBatch); // <-- Diperbaiki
-            productBatchRepository.save(batch);
+            // Perbarui sisa stok online di batch tersebut (Otomatis disimpan oleh JPA Dirty Checking)
+            batch.setStokOnline(currentBatchStock - deductFromThisBatch); 
 
             // Kurangi sisa target yang belum terpenuhi
             remainingToDeduct -= deductFromThisBatch;

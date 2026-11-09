@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +42,7 @@ public class TieringPriceService {
     ) {}
 
     public record B2BCheckoutResult(
-            UUID productId,
+            String productId,
             int totalQuantity,
             BigDecimal blendedUnitPrice,
             BigDecimal totalCost,
@@ -82,7 +81,7 @@ public class TieringPriceService {
     }
 
     @Transactional
-    public B2BCheckoutResult executeFefoBlendedPricing(Customer customer, UUID productId, int requestedQty) {
+    public B2BCheckoutResult executeFefoBlendedPricing(Customer customer, String productId, int requestedQty) {
         if (customer == null || !"B2B".equalsIgnoreCase(customer.getTipeAkun())) {
             throw new IllegalArgumentException("Akses ditolak: Kalkulasi ini khusus untuk akun tipe B2B.");
         }
@@ -111,10 +110,10 @@ public class TieringPriceService {
         BigDecimal hargaDasarB2C = product.getHargaEceran();
         LocalDate batasCuciGudang = LocalDate.now().plusDays(CLEARANCE_DAYS_THRESHOLD);
 
-        BigDecimal hargaRegulerB2B = tieringPriceRepository
-                .findDynamicB2BPrice(productId, requestedQty)
-                .map(TieringPrice::getHargaPerUnit)
-                .orElseGet(() -> hargaDasarB2C.multiply(B2B_REGULAR_DISCOUNT_MULTIPLIER));
+        Optional<TieringPrice> tieringOpt = tieringPriceRepository.findDynamicB2BPrice(productId, requestedQty);
+        BigDecimal hargaRegulerB2B = tieringOpt.isPresent()
+                ? tieringOpt.get().getHargaPerUnit()
+                : hargaDasarB2C.multiply(B2B_REGULAR_DISCOUNT_MULTIPLIER);
 
         int remainingQtyToFulfill = requestedQty;
         BigDecimal totalCostClearance = BigDecimal.ZERO;
@@ -175,7 +174,7 @@ public class TieringPriceService {
     }
 
     @Transactional
-    public List<OrderItem> processB2BCheckoutItems(Customer customer, Order order, UUID productId, int requestedQty) {
+    public List<OrderItem> processB2BCheckoutItems(Customer customer, Order order, String productId, int requestedQty) {
         B2BCheckoutResult result = executeFefoBlendedPricing(customer, productId, requestedQty);
         List<OrderItem> orderItems = new ArrayList<>();
 

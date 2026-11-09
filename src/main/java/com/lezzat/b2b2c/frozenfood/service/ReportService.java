@@ -100,7 +100,7 @@ public class ReportService {
         int unitTerjualB2B = 0;
 
         // key = idProduk, value = [namaProduk, totalUnit, totalPenjualan]
-        Map<UUID, ProdukAkumulasi> akumulasiPerProduk = new LinkedHashMap<>();
+        Map<String, ProdukAkumulasi> akumulasiPerProduk = new LinkedHashMap<>();
 
         for (OrderItem item : items) {
             UUID idOrder = item.getOrder().getIdOrder();
@@ -118,7 +118,7 @@ public class ReportService {
                 unitTerjualB2B += qty;
             }
 
-            UUID idProduk = item.getProductBatch().getProduct().getIdProduk();
+            String idProduk = item.getProductBatch().getProduct().getIdProduk();
             String namaProduk = item.getProductBatch().getProduct().getNamaProduk();
             BigDecimal subtotal = item.getSubtotalItem() == null ? BigDecimal.ZERO : item.getSubtotalItem();
 
@@ -147,12 +147,12 @@ public class ReportService {
 
     /** Helper akumulasi internal — tidak dipakai di luar method getLaporanPenjualan(). */
     private static class ProdukAkumulasi {
-        private final UUID idProduk;
+        private final String idProduk;
         private final String namaProduk;
         private int totalUnit = 0;
         private BigDecimal totalPenjualan = BigDecimal.ZERO;
 
-        ProdukAkumulasi(UUID idProduk, String namaProduk) {
+        ProdukAkumulasi(String idProduk, String namaProduk) {
             this.idProduk = idProduk;
             this.namaProduk = namaProduk;
         }

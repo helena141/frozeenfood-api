@@ -14,6 +14,6 @@ public record DeliveryEstimateRequest(
         UUID idOrder,
         @Valid List<Item> items
 ) {
-    public record Item(@NotNull UUID idProduk, @Min(1) int quantity) {
+    public record Item(@NotNull String idProduk, @Min(1) int quantity) {
     }
 }
