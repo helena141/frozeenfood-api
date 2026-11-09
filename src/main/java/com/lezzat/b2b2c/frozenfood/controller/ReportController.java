@@ -1,5 +1,6 @@
 package com.lezzat.b2b2c.frozenfood.controller;
 
+import com.lezzat.b2b2c.frozenfood.dto.response.LaporanPenjualanResponse;
 import com.lezzat.b2b2c.frozenfood.dto.response.ReportResponse;
 import com.lezzat.b2b2c.frozenfood.service.ReportService;
 import lombok.RequiredArgsConstructor;
@@ -19,11 +20,21 @@ public class ReportController {
 
     private final ReportService reportService;
 
+    // UC-32: Laporan Keuangan (omzet, berbasis Payment LUNAS).
     // Contoh panggilan: GET /api/reports/omzet?mulai=2026-09-01&akhir=2026-09-30
     @GetMapping("/omzet")
     public ResponseEntity<ReportResponse> getLaporanOmzet(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate mulai,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate akhir) {
         return ResponseEntity.ok(reportService.getLaporanOmzet(mulai, akhir));
+    }
+
+    // UC-31: Laporan Penjualan (volume pesanan & unit terjual, berbasis OrderItem).
+    // Contoh panggilan: GET /api/reports/penjualan?mulai=2026-09-01&akhir=2026-09-30
+    @GetMapping("/penjualan")
+    public ResponseEntity<LaporanPenjualanResponse> getLaporanPenjualan(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate mulai,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate akhir) {
+        return ResponseEntity.ok(reportService.getLaporanPenjualan(mulai, akhir));
     }
 }

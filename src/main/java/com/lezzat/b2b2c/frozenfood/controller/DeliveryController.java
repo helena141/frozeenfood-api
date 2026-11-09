@@ -1,6 +1,10 @@
 package com.lezzat.b2b2c.frozenfood.controller;
 
+import com.lezzat.b2b2c.frozenfood.dto.request.DeliveryEstimateRequest;
+import com.lezzat.b2b2c.frozenfood.dto.request.DeliveryKonfirmasiRequest;
+import com.lezzat.b2b2c.frozenfood.dto.request.DeliveryPengantarRequest;
 import com.lezzat.b2b2c.frozenfood.dto.request.DeliveryRequest;
+import com.lezzat.b2b2c.frozenfood.dto.response.DeliveryEstimateResponse;
 import com.lezzat.b2b2c.frozenfood.dto.response.DeliveryResponse;
 import com.lezzat.b2b2c.frozenfood.service.DeliveryService;
 import jakarta.validation.Valid;
@@ -22,6 +26,24 @@ public class DeliveryController {
     public ResponseEntity<DeliveryResponse> create(@Valid @RequestBody DeliveryRequest request) {
         DeliveryResponse response = deliveryService.createDelivery(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /** Pratinjau ongkir/jadwal/pelaksana tanpa menyimpan apa pun. */
+    @PostMapping("/estimate")
+    public ResponseEntity<DeliveryEstimateResponse> estimate(@Valid @RequestBody DeliveryEstimateRequest request) {
+        return ResponseEntity.ok(deliveryService.estimate(request));
+    }
+
+    @PatchMapping("/{id}/konfirmasi-admin")
+    public ResponseEntity<DeliveryResponse> konfirmasiAdmin(
+            @PathVariable UUID id, @Valid @RequestBody DeliveryKonfirmasiRequest request) {
+        return ResponseEntity.ok(deliveryService.konfirmasiAdmin(id, request));
+    }
+
+    @PatchMapping("/{id}/pengantar")
+    public ResponseEntity<DeliveryResponse> setPengantar(
+            @PathVariable UUID id, @Valid @RequestBody DeliveryPengantarRequest request) {
+        return ResponseEntity.ok(deliveryService.setPengantar(id, request.namaPengantar()));
     }
 
     @GetMapping("/{id}")
