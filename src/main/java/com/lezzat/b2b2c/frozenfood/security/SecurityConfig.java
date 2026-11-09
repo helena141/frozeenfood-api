@@ -22,6 +22,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @EnableWebSecurity
@@ -85,6 +87,7 @@ public class SecurityConfig {
                 // Zona Hibrid: B2B dan B2C bisa melihat katalog produk (GET)
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/payments/callback").permitAll()
+                .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 // Default Hukum Sapu Jagat: Sisa endpoint lainnya WAJIB bawa Token JWT
                 .anyRequest().authenticated()
@@ -95,5 +98,17 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // 5. Static Resource Handler untuk menampilkan foto profil yang diunggah ke folder uploads/
+    @Bean
+    public WebMvcConfigurer uploadResourceConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addResourceHandlers(ResourceHandlerRegistry registry) {
+                registry.addResourceHandler("/uploads/**")
+                        .addResourceLocations("file:uploads/");
+            }
+        };
     }
 }

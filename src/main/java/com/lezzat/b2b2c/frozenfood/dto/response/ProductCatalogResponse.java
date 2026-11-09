@@ -23,4 +23,9 @@ public class ProductCatalogResponse {
     private String gambar;
     private Boolean isActive;
     private Integer totalStock; // Akumulasi stok dari seluruh ProductBatch
+
+    // Alias untuk kompatibilitas penuh dengan properti totalStokOnline di Frontend Next.js
+    public Integer getTotalStokOnline() {
+        return totalStock != null ? totalStock : 0;
+    }
 }
