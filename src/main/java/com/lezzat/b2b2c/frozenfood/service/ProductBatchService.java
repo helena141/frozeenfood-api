@@ -67,10 +67,22 @@ public class ProductBatchService {
         return mapToResponse(savedBatch);
     }
 
-    // Mengambil semua data batch (untuk admin/gudang)
+    // Mengambil semua data batch (untuk admin/gudang) — bebas N+1 query dengan JOIN FETCH
     @Transactional(readOnly = true)
     public List<ProductBatchResponse> getAllBatches() {
-        return productBatchRepository.findAll().stream()
+        return productBatchRepository.findAllWithProductOrderByTanggalExpAsc().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    // Mengambil data batch dengan filter opsional productId (untuk Dashboard Next.js)
+    @Transactional(readOnly = true)
+    public List<ProductBatchResponse> getBatches(String productId) {
+        List<ProductBatch> batches = (productId != null && !productId.isBlank())
+                ? productBatchRepository.findByProductIdWithProductOrderByTanggalExpAsc(productId)
+                : productBatchRepository.findAllWithProductOrderByTanggalExpAsc();
+
+        return batches.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

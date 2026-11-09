@@ -28,10 +28,11 @@ public class ProductBatchController {
 
     // === TAMBAHAN DUA METHOD GET UNTUK FEFO ===
 
-    // GET: Lihat semua riwayat batch di sistem (Untuk Admin)
+    // GET: Lihat semua riwayat batch di sistem (mendukung filter opsional ?productId=NGT-001)
     @GetMapping
-    public ResponseEntity<List<ProductBatchResponse>> getAllBatches() {
-        return ResponseEntity.ok(productBatchService.getAllBatches());
+    public ResponseEntity<List<ProductBatchResponse>> getAllBatches(
+            @RequestParam(required = false) String productId) {
+        return ResponseEntity.ok(productBatchService.getBatches(productId));
     }
 
     // GET: Lihat stok yang tersedia per produk (Logika FEFO)

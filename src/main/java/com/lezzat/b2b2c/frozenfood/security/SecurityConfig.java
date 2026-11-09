@@ -32,7 +32,7 @@ public class SecurityConfig {
 
     // Origin frontend yang diizinkan, dipisah koma. Default: Next.js lokal.
     // Ubah lewat application.yml: lezzat.cors.allowed-origins
-    @Value("${lezzat.cors.allowed-origins:http://localhost:3000}")
+    @Value("${lezzat.cors.allowed-origins:http://localhost:3000,http://127.0.0.1:3000}")
     private String[] allowedOrigins;
 
     // Inject sang Satpam yang udah lu buat
@@ -59,7 +59,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(Arrays.asList(allowedOrigins));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Content-Disposition")); // agar nama file nota terbaca frontend
+        config.setExposedHeaders(List.of("Content-Disposition", "Authorization")); // agar nama file nota terbaca frontend
         config.setAllowCredentials(false); // token lewat header Authorization, bukan cookie
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -84,6 +84,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Zona Hibrid: B2B dan B2C bisa melihat katalog produk (GET)
                 .requestMatchers("/api/products/**").permitAll()
+                .requestMatchers("/api/payments/callback").permitAll()
                 .requestMatchers("/error").permitAll()
                 // Default Hukum Sapu Jagat: Sisa endpoint lainnya WAJIB bawa Token JWT
                 .anyRequest().authenticated()

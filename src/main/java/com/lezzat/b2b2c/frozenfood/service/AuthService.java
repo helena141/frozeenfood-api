@@ -55,6 +55,7 @@ public class AuthService {
         String token = tokenProvider.generateToken(authentication);
 
         return AuthResponse.builder()
+                .idUser(customer.getIdUser())
                 .token(token)
                 .nama(customer.getNama())
                 .email(customer.getEmail())
@@ -76,6 +77,7 @@ public class AuthService {
         String token = tokenProvider.generateToken(authentication);
 
         return AuthResponse.builder()
+                .idUser(customer.getIdUser())
                 .token(token)
                 .nama(customer.getNama())
                 .email(customer.getEmail())

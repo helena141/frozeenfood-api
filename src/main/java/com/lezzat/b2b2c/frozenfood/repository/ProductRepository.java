@@ -1,6 +1,7 @@
 package com.lezzat.b2b2c.frozenfood.repository;
 
 import com.lezzat.b2b2c.frozenfood.entity.Product;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional; // Tambahkan import ini untuk membungkus hasil pencarian
@@ -8,7 +9,16 @@ import java.util.Optional; // Tambahkan import ini untuk membungkus hasil pencar
 // === 1. Ubah UUID menjadi String di sini ===
 public interface ProductRepository extends JpaRepository<Product, String> {
     
+    @Override
+    @EntityGraph(attributePaths = "productBatches")
+    List<Product> findAll();
+
+    @Override
+    @EntityGraph(attributePaths = "productBatches")
+    Optional<Product> findById(String id);
+
     // Mencari produk yang namanya cocok ATAU kategorinya cocok
+    @EntityGraph(attributePaths = "productBatches")
     List<Product> findByNamaProdukContainingIgnoreCaseOrKategoriContainingIgnoreCase(String namaProduk, String kategori);
     
     // === MENCEGAH DUPLIKAT NAMA PRODUK ===
