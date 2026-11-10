@@ -44,11 +44,32 @@ public class ProductBatchController {
 
     public record BatchPricingRequest(java.math.BigDecimal hargaOverride, java.math.BigDecimal diskon) {}
 
+    public record BatchUpdateRequest(
+            Integer stokAwal,
+            Integer stokOnline,
+            java.time.LocalDate tanggalExp,
+            java.math.BigDecimal hargaOverride,
+            java.math.BigDecimal diskon
+    ) {}
+
     @PatchMapping("/{idProdBatch}/pricing")
     public ResponseEntity<ProductBatchResponse> updateBatchPricing(
             @PathVariable String idProdBatch,
             @RequestBody BatchPricingRequest request) {
         return ResponseEntity.ok(productBatchService.updateBatchPricing(
                 idProdBatch, request.hargaOverride(), request.diskon()));
+    }
+
+    @PutMapping("/{idProdBatch}")
+    public ResponseEntity<ProductBatchResponse> updateBatch(
+            @PathVariable String idProdBatch,
+            @RequestBody BatchUpdateRequest request) {
+        return ResponseEntity.ok(productBatchService.updateBatch(idProdBatch, request));
+    }
+
+    @DeleteMapping("/{idProdBatch}")
+    public ResponseEntity<Void> deleteBatch(@PathVariable String idProdBatch) {
+        productBatchService.deleteBatch(idProdBatch);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -35,6 +35,43 @@ public class ProductBatchService {
     }
 
     @Transactional
+    public ProductBatchResponse updateBatch(
+            String idProdBatch,
+            com.lezzat.b2b2c.frozenfood.controller.ProductBatchController.BatchUpdateRequest req) {
+        ProductBatch batch = productBatchRepository.findById(idProdBatch)
+                .orElseThrow(() -> new EntityNotFoundException("Batch dengan ID " + idProdBatch + " tidak ditemukan"));
+
+        if (req.stokAwal() != null) {
+            if (req.stokAwal() < 0) {
+                throw new IllegalArgumentException("Stok awal tidak boleh negatif");
+            }
+            batch.setStokAwal(req.stokAwal());
+        }
+        if (req.stokOnline() != null) {
+            if (req.stokOnline() < 0) {
+                throw new IllegalArgumentException("Stok online tidak boleh negatif");
+            }
+            batch.setStokOnline(req.stokOnline());
+        }
+        if (req.tanggalExp() != null) {
+            batch.setTanggalExp(req.tanggalExp());
+        }
+        batch.setHargaOverride(req.hargaOverride());
+        batch.setDiskon(req.diskon());
+
+        return mapToResponse(productBatchRepository.save(batch));
+    }
+
+    @Transactional
+    public void deleteBatch(String idProdBatch) {
+        ProductBatch batch = productBatchRepository.findById(idProdBatch)
+                .orElseThrow(() -> new EntityNotFoundException("Batch dengan ID " + idProdBatch + " tidak ditemukan"));
+        batch.setStokOnline(0);
+        productBatchRepository.save(batch);
+        productBatchRepository.delete(batch);
+    }
+
+    @Transactional
     public ProductBatchResponse createBatch(ProductBatchRequest request) {
         // 1. Cari produk master menggunakan ID String (Contoh: "NGT-001")
         Product product = productRepository.findById(request.productId())
