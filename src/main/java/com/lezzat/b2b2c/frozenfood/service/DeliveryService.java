@@ -107,6 +107,12 @@ public class DeliveryService {
         return deliveryRepository.findAll().stream()
                 .filter(d -> statusDelivery == null || statusDelivery.isBlank()
                         || statusDelivery.equalsIgnoreCase(d.getStatusDelivery()))
+                .sorted((a, b) -> {
+                    if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                    if (a.getCreatedAt() == null) return 1;
+                    if (b.getCreatedAt() == null) return -1;
+                    return b.getCreatedAt().compareTo(a.getCreatedAt());
+                })
                 .map(this::toResponse)
                 .toList();
     }
@@ -136,6 +142,18 @@ public class DeliveryService {
         }
         d.setStatusDelivery(target);
         d.setUpdatedAt(LocalDateTime.now());
+        if (d.getOrder() != null) {
+            Order order = d.getOrder();
+            if ("TERKIRIM".equals(target)) {
+                order.setStatus("SELESAI");
+                orderRepository.save(order);
+            } else if ("DISIAPKAN".equals(target) || "DALAM_PERJALANAN".equals(target)) {
+                if ("DIBAYAR".equalsIgnoreCase(order.getStatus()) || "LUNAS".equalsIgnoreCase(order.getStatus())) {
+                    order.setStatus("DIPROSES");
+                    orderRepository.save(order);
+                }
+            }
+        }
         return toResponse(d);
     }
 

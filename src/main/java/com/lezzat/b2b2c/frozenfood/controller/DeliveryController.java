@@ -25,8 +25,10 @@ public class DeliveryController {
 
     @GetMapping
     public ResponseEntity<List<DeliveryResponse>> getAll(
-            @RequestParam(required = false) String statusDelivery) {
-        return ResponseEntity.ok(deliveryService.getAllDeliveries(statusDelivery));
+            @RequestParam(required = false) String statusDelivery,
+            @RequestParam(required = false) String status) {
+        String filter = (statusDelivery != null && !statusDelivery.isBlank()) ? statusDelivery : status;
+        return ResponseEntity.ok(deliveryService.getAllDeliveries(filter));
     }
 
     @PostMapping
