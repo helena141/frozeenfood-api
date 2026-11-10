@@ -92,6 +92,9 @@ public class PaymentService {
         payment.setStatus(request.status());
         if (STATUS_LUNAS.equalsIgnoreCase(request.status())) {
             payment.setPaidAt(LocalDateTime.now());
+            Order order = payment.getOrder();
+            order.setStatus("DIBAYAR");
+            orderRepository.save(order);
         }
         payment.setUpdatedAt(LocalDateTime.now());
 

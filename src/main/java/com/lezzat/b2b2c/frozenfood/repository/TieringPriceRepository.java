@@ -1,5 +1,6 @@
 package com.lezzat.b2b2c.frozenfood.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,4 +21,6 @@ public interface TieringPriceRepository extends JpaRepository<TieringPrice, UUID
         @Param("productId") String productId, 
         @Param("quantity") int quantity
     );
+
+    List<TieringPrice> findByProduct_IdProdukOrderByMinQtyAsc(String productId);
 }

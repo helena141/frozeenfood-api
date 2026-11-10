@@ -25,4 +25,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     // Ambil daftar order milik customer lengkap dengan rincian item & produknya (urut terbaru)
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.productBatch pb LEFT JOIN FETCH pb.product WHERE o.customer.idUser = :idUser ORDER BY o.createdAt DESC")
     List<Order> findByCustomerIdUserWithItems(@Param("idUser") UUID idUser);
+
+    @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.productBatch pb LEFT JOIN FETCH pb.product ORDER BY o.createdAt DESC")
+    List<Order> findAllWithItems();
 }

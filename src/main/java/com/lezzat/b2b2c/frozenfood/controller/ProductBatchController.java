@@ -41,4 +41,14 @@ public class ProductBatchController {
     public ResponseEntity<List<ProductBatchResponse>> getAvailableBatches(@PathVariable String idProduk) {
         return ResponseEntity.ok(productBatchService.getAvailableBatches(idProduk));
     }
+
+    public record BatchPricingRequest(java.math.BigDecimal hargaOverride, java.math.BigDecimal diskon) {}
+
+    @PatchMapping("/{idProdBatch}/pricing")
+    public ResponseEntity<ProductBatchResponse> updateBatchPricing(
+            @PathVariable String idProdBatch,
+            @RequestBody BatchPricingRequest request) {
+        return ResponseEntity.ok(productBatchService.updateBatchPricing(
+                idProdBatch, request.hargaOverride(), request.diskon()));
+    }
 }

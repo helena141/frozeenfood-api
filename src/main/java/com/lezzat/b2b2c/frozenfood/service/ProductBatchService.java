@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -23,6 +24,15 @@ public class ProductBatchService {
 
     private final ProductBatchRepository productBatchRepository;
     private final ProductRepository productRepository;
+
+    @Transactional
+    public ProductBatchResponse updateBatchPricing(String idProdBatch, BigDecimal hargaOverride, BigDecimal diskon) {
+        ProductBatch batch = productBatchRepository.findById(idProdBatch)
+                .orElseThrow(() -> new EntityNotFoundException("Batch dengan ID " + idProdBatch + " tidak ditemukan"));
+        batch.setHargaOverride(hargaOverride);
+        batch.setDiskon(diskon);
+        return mapToResponse(productBatchRepository.save(batch));
+    }
 
     @Transactional
     public ProductBatchResponse createBatch(ProductBatchRequest request) {

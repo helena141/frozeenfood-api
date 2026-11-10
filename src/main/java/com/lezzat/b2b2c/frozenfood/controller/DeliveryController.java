@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -21,6 +22,12 @@ import java.util.UUID;
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
+
+    @GetMapping
+    public ResponseEntity<List<DeliveryResponse>> getAll(
+            @RequestParam(required = false) String statusDelivery) {
+        return ResponseEntity.ok(deliveryService.getAllDeliveries(statusDelivery));
+    }
 
     @PostMapping
     public ResponseEntity<DeliveryResponse> create(@Valid @RequestBody DeliveryRequest request) {

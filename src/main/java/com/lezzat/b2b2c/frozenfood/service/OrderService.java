@@ -44,7 +44,7 @@ public class OrderService {
                 .customer(customer)
                 .tipeOrder(role)
                 .status("MENUNGGU_PEMBAYARAN")
-                .ongkir(new BigDecimal("15000.00"))
+                .ongkir(BigDecimal.ZERO)
                 .items(new ArrayList<>())
                 .totalTagihan(BigDecimal.ZERO)
                 .build();
@@ -100,6 +100,23 @@ public class OrderService {
         Order order = orderRepository.findByIdWithItems(idOrder)
                 .orElseThrow(() -> new EntityNotFoundException("Order dengan ID " + idOrder + " tidak ditemukan"));
         return toResponse(order);
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrders(String tipeOrder, String status) {
+        return orderRepository.findAllWithItems().stream()
+                .filter(o -> tipeOrder == null || tipeOrder.isBlank() || tipeOrder.equalsIgnoreCase(o.getTipeOrder()))
+                .filter(o -> status == null || status.isBlank() || status.equalsIgnoreCase(o.getStatus()))
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public OrderResponse updateOrderStatus(UUID idOrder, String status) {
+        Order order = orderRepository.findByIdWithItems(idOrder)
+                .orElseThrow(() -> new EntityNotFoundException("Order dengan ID " + idOrder + " tidak ditemukan"));
+        order.setStatus(status);
+        return toResponse(orderRepository.save(order));
     }
 
     private OrderResponse toResponse(Order order) {

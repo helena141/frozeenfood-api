@@ -97,7 +97,18 @@ public class DeliveryService {
                 .alasanKeputusan(String.join("; ", plan.alasan()))
                 .updatedAt(now)
                 .build();
-        return toResponse(deliveryRepository.save(delivery));
+        Delivery saved = deliveryRepository.save(delivery);
+        syncOrderOngkir(order, saved.getOngkir());
+        return toResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DeliveryResponse> getAllDeliveries(String statusDelivery) {
+        return deliveryRepository.findAll().stream()
+                .filter(d -> statusDelivery == null || statusDelivery.isBlank()
+                        || statusDelivery.equalsIgnoreCase(d.getStatusDelivery()))
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -141,6 +152,7 @@ public class DeliveryService {
         d.setNamaPengantar(req.namaPengantar().trim());
         d.setStatusDelivery(DeliveryStatusMachine.MENUNGGU_PICKUP);
         d.setUpdatedAt(LocalDateTime.now());
+        syncOrderOngkir(d.getOrder(), d.getOngkir());
         return toResponse(d);
     }
 
@@ -163,6 +175,15 @@ public class DeliveryService {
             items.add(new ItemMuatan(p.getNamaProduk(), p.getBerat(), p.getVolume(), it.getQuantity()));
         });
         return items;
+    }
+
+    private void syncOrderOngkir(Order order, java.math.BigDecimal ongkir) {
+        java.math.BigDecimal subtotal = order.getItems().stream()
+                .map(it -> it.getSubtotalItem() != null ? it.getSubtotalItem() : java.math.BigDecimal.ZERO)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        order.setOngkir(ongkir);
+        order.setTotalTagihan(subtotal.add(ongkir));
+        orderRepository.save(order);
     }
 
     private Order findOrder(UUID id) {

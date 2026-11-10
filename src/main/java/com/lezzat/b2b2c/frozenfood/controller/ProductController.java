@@ -5,10 +5,14 @@ import com.lezzat.b2b2c.frozenfood.dto.response.ProductCatalogResponse;
 import com.lezzat.b2b2c.frozenfood.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 
 @RestController
@@ -53,5 +57,28 @@ public class ProductController {
     public ResponseEntity<Void> deleteProduct(@PathVariable String id) {
         productService.deleteProduct(id);
         return ResponseEntity.noContent().build();
+    }
+
+    public record TieringPriceRequest(Integer minQty, Integer maxQty, BigDecimal hargaPerUnit) {}
+
+    @PostMapping("/{id}/tiering")
+    public ResponseEntity<ProductCatalogResponse> addTieringPrice(
+            @PathVariable String id,
+            @RequestBody TieringPriceRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(productService.addTieringPrice(id, request.minQty(), request.maxQty(), request.hargaPerUnit()));
+    }
+
+    @DeleteMapping("/tiering/{idTiering}")
+    public ResponseEntity<Void> deleteTieringPrice(@PathVariable UUID idTiering) {
+        productService.deleteTieringPrice(idTiering);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping(value = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProductCatalogResponse> uploadProductImage(
+            @PathVariable String id,
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(productService.uploadProductImage(id, file));
     }
 }
