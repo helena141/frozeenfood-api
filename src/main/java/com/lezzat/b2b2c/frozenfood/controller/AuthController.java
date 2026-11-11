@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lezzat.b2b2c.frozenfood.dto.request.GoogleLoginRequest;
 import com.lezzat.b2b2c.frozenfood.dto.request.LoginRequest;
 import com.lezzat.b2b2c.frozenfood.dto.request.RegisterRequest;
 import com.lezzat.b2b2c.frozenfood.dto.response.AuthResponse;
@@ -34,5 +35,11 @@ public class AuthController {
         // Serahkan verifikasi ke AuthService, kembalikan status 200 (OK)
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> google(@Valid @RequestBody GoogleLoginRequest request) {
+        // Verifikasi ID token Google, buat akun B2C bila belum ada, kembalikan JWT Lezzat
+        return ResponseEntity.ok(authService.loginWithGoogle(request));
     }
 }

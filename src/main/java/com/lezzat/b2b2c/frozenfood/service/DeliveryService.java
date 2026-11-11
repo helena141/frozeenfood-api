@@ -31,7 +31,8 @@ import java.util.UUID;
 
 /**
  * DeliveryService hanya BACA Order (milik Moreno), tidak mengubahnya.
- * Ongkir disimpan di Delivery saja; integrasi ke total Order/nota = koordinasi tim.
+ * Ongkir disimpan di Delivery saja; integrasi ke total Order/nota = koordinasi
+ * tim.
  * Waktu "pesan" untuk batas jam 15.00 memakai waktu pengiriman dibuat
  * (proxy; ganti ke Order.createdAt bila tipenya sudah dipastikan).
  */
@@ -108,9 +109,12 @@ public class DeliveryService {
                 .filter(d -> statusDelivery == null || statusDelivery.isBlank()
                         || statusDelivery.equalsIgnoreCase(d.getStatusDelivery()))
                 .sorted((a, b) -> {
-                    if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
-                    if (a.getCreatedAt() == null) return 1;
-                    if (b.getCreatedAt() == null) return -1;
+                    if (a.getCreatedAt() == null && b.getCreatedAt() == null)
+                        return 0;
+                    if (a.getCreatedAt() == null)
+                        return 1;
+                    if (b.getCreatedAt() == null)
+                        return -1;
                     return b.getCreatedAt().compareTo(a.getCreatedAt());
                 })
                 .map(this::toResponse)
@@ -157,7 +161,9 @@ public class DeliveryService {
         return toResponse(d);
     }
 
-    /** Owner/admin: isi ongkir pihak ketiga manual, lalu lanjut ke MENUNGGU_PICKUP. */
+    /**
+     * Owner/admin: isi ongkir pihak ketiga manual, lalu lanjut ke MENUNGGU_PICKUP.
+     */
     @Transactional
     public DeliveryResponse konfirmasiAdmin(UUID idDelivery, DeliveryKonfirmasiRequest req) {
         Delivery d = findOrThrow(idDelivery);
