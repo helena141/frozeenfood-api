@@ -9,7 +9,10 @@ public record OrderItemResponse(
         String namaProduk,
         String idProdBatch,
         Integer quantity,
+        BigDecimal hargaAsli,
         BigDecimal hargaSatuanSnapshot,
+        BigDecimal diskonPersen,
+        String keteranganPromo,
         BigDecimal subtotalItem
 ) {
 }

@@ -66,6 +66,7 @@ public class OrderB2CService {
         private final ProductRepository productRepository;
         private final ProductBatchRepository productBatchRepository;
         private final FefoInventoryService fefoInventoryService;
+        private final TieringPriceService tieringPriceService;
 
         @Transactional
         public OrderResponse createRetailOrder(OrderB2CRequest request) {
@@ -85,7 +86,7 @@ public class OrderB2CService {
                                 .build();
 
                 for (OrderItemRequest itemRequest : request.items()) {
-                        List<OrderItem> breakdown = susunBreakdownPerBatch(order, itemRequest);
+                        List<OrderItem> breakdown = susunBreakdownPerBatch(order, customer, itemRequest);
                         orderItems.addAll(breakdown);
 
                         for (OrderItem item : breakdown) {
@@ -110,7 +111,7 @@ public class OrderB2CService {
          * stok (baca saja). Stok baru benar-benar dipotong lewat panggilan
          * fefoInventoryService.deductStockFefo() terpisah di createRetailOrder().
          */
-        private List<OrderItem> susunBreakdownPerBatch(Order order, OrderItemRequest itemRequest) {
+        private List<OrderItem> susunBreakdownPerBatch(Order order, Customer customer, OrderItemRequest itemRequest) {
                 Product product = productRepository.findById(itemRequest.idProduk())
                                 .orElseThrow(() -> new EntityNotFoundException(
                                                 "Produk dengan id " + itemRequest.idProduk() + " tidak ditemukan"));
@@ -130,6 +131,7 @@ public class OrderB2CService {
                                                         + totalAvailable);
                 }
 
+                String tipeAkun = customer != null && customer.getTipeAkun() != null ? customer.getTipeAkun() : TIPE_B2C;
                 List<OrderItem> breakdown = new ArrayList<>();
                 int sisaDibutuhkan = itemRequest.quantity();
 
@@ -139,8 +141,11 @@ public class OrderB2CService {
                         }
 
                         int diambilDariBatchIni = Math.min(batch.getStokOnline(), sisaDibutuhkan);
-                        BigDecimal hargaEfektif = hitungHargaEfektif(product, batch);
-                        BigDecimal subtotal = hargaEfektif.multiply(BigDecimal.valueOf(diambilDariBatchIni));
+                        TieringPriceService.AppliedPriceResult applied = tieringPriceService
+                                        .calculateOrderItemUnitPrice(product, batch, itemRequest.quantity(), tipeAkun);
+                        BigDecimal hargaEfektif = applied.hargaSatuanFinal();
+                        BigDecimal subtotal = hargaEfektif.multiply(BigDecimal.valueOf(diambilDariBatchIni))
+                                        .setScale(2, RoundingMode.HALF_UP);
 
                         breakdown.add(OrderItem.builder()
                                         .order(order)
@@ -156,31 +161,31 @@ public class OrderB2CService {
                 return breakdown;
         }
 
-        private BigDecimal hitungHargaEfektif(Product product, ProductBatch batch) {
-                BigDecimal hargaDasar = batch.getHargaOverride() != null
-                                ? batch.getHargaOverride()
-                                : product.getHargaEceran();
-
-                if (batch.getDiskon() == null || batch.getDiskon().compareTo(BigDecimal.ZERO) == 0) {
-                        return hargaDasar;
-                }
-
-                // ASUMSI: diskon disimpan sebagai PERSEN (mis. 10.00 = potongan 10%).
-                BigDecimal faktorDiskon = BigDecimal.ONE.subtract(
-                                batch.getDiskon().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
-                return hargaDasar.multiply(faktorDiskon).setScale(2, RoundingMode.HALF_UP);
-        }
-
         private OrderResponse toResponse(Order order) {
                 List<OrderItemResponse> itemResponses = order.getItems().stream()
-                                .map(item -> new OrderItemResponse(
-                                                item.getIdOrderItem(),
-                                                item.getProductBatch().getProduct().getIdProduk(),
-                                                item.getProductBatch().getProduct().getNamaProduk(),
-                                                item.getProductBatch().getIdProdBatch(),
-                                                item.getQuantity(),
-                                                item.getHargaSatuanSnapshot(),
-                                                item.getSubtotalItem()))
+                                .map(item -> {
+                                        BigDecimal hargaAsli = item.getProductBatch().getProduct().getHargaEceran();
+                                        BigDecimal hargaSnapshot = item.getHargaSatuanSnapshot();
+                                        BigDecimal diskonPct = BigDecimal.ZERO;
+                                        if (hargaAsli != null && hargaAsli.compareTo(BigDecimal.ZERO) > 0
+                                                        && hargaSnapshot != null && hargaSnapshot.compareTo(hargaAsli) < 0) {
+                                                diskonPct = hargaAsli.subtract(hargaSnapshot)
+                                                                .multiply(BigDecimal.valueOf(100))
+                                                                .divide(hargaAsli, 0, RoundingMode.HALF_UP);
+                                        }
+                                        String ketPromo = resolveKeteranganPromo(item, hargaAsli, hargaSnapshot, diskonPct);
+                                        return new OrderItemResponse(
+                                                        item.getIdOrderItem(),
+                                                        item.getProductBatch().getProduct().getIdProduk(),
+                                                        item.getProductBatch().getProduct().getNamaProduk(),
+                                                        item.getProductBatch().getIdProdBatch(),
+                                                        item.getQuantity(),
+                                                        hargaAsli,
+                                                        hargaSnapshot,
+                                                        diskonPct,
+                                                        ketPromo,
+                                                        item.getSubtotalItem());
+                                })
                                 .toList();
 
                 return new OrderResponse(
@@ -193,5 +198,24 @@ public class OrderB2CService {
                                 order.getCatatan(),
                                 itemResponses,
                                 order.getCreatedAt());
+        }
+
+        private String resolveKeteranganPromo(
+                        OrderItem item,
+                        BigDecimal hargaAsli,
+                        BigDecimal hargaSnapshot,
+                        BigDecimal diskonPct) {
+                if (hargaAsli == null || hargaSnapshot == null || hargaSnapshot.compareTo(hargaAsli) >= 0) {
+                        return "Harga Normal";
+                }
+                TieringPriceService.BatchPriceEvaluation batchEval = tieringPriceService.evaluateBatchPrice(
+                                item.getProductBatch().getProduct(),
+                                item.getProductBatch()
+                );
+                if (batchEval.isDealBatch() && hargaSnapshot.compareTo(batchEval.hargaEfektif()) == 0
+                                && batchEval.labelDeal() != null) {
+                        return batchEval.labelDeal();
+                }
+                return "Harga Grosir / Diskon (-" + diskonPct.stripTrailingZeros().toPlainString() + "%)";
         }
 }

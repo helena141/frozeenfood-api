@@ -6,6 +6,7 @@ import com.lezzat.b2b2c.frozenfood.entity.Product;
 import com.lezzat.b2b2c.frozenfood.entity.ProductBatch;
 import com.lezzat.b2b2c.frozenfood.repository.ProductBatchRepository;
 import com.lezzat.b2b2c.frozenfood.repository.ProductRepository;
+import com.lezzat.b2b2c.frozenfood.service.core.ExpiryAlertScheduler;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class ProductBatchService {
 
     private final ProductBatchRepository productBatchRepository;
     private final ProductRepository productRepository;
+    private final ExpiryAlertScheduler expiryAlertScheduler;
 
     @Transactional
     public ProductBatchResponse updateBatchPricing(String idProdBatch, BigDecimal hargaOverride, BigDecimal diskon) {
@@ -31,7 +33,9 @@ public class ProductBatchService {
                 .orElseThrow(() -> new EntityNotFoundException("Batch dengan ID " + idProdBatch + " tidak ditemukan"));
         batch.setHargaOverride(hargaOverride);
         batch.setDiskon(diskon);
-        return mapToResponse(productBatchRepository.save(batch));
+        ProductBatch saved = productBatchRepository.save(batch);
+        expiryAlertScheduler.scanAndGenerateExpiryAlerts();
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -59,7 +63,9 @@ public class ProductBatchService {
         batch.setHargaOverride(req.hargaOverride());
         batch.setDiskon(req.diskon());
 
-        return mapToResponse(productBatchRepository.save(batch));
+        ProductBatch saved = productBatchRepository.save(batch);
+        expiryAlertScheduler.scanAndGenerateExpiryAlerts();
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -111,6 +117,7 @@ public class ProductBatchService {
             savedBatch = productBatchRepository.save(batch);
         }
 
+        expiryAlertScheduler.scanAndGenerateExpiryAlerts();
         return mapToResponse(savedBatch);
     }
 

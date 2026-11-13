@@ -63,6 +63,7 @@ public class NotaPdfService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final DeliveryRepository deliveryRepository;
+    private final TieringPriceService tieringPriceService;
 
     /**
      * Password pemilik PDF (untuk mengunci izin edit). Bisa diatur di application.yml:
@@ -123,22 +124,55 @@ public class NotaPdfService {
         doc.add(info);
 
         // ===== Tabel barang =====
-        PdfPTable tabel = new PdfPTable(new float[]{4f, 1f, 2.2f, 2.2f});
+        PdfPTable tabel = new PdfPTable(new float[]{3.6f, 0.8f, 1.8f, 2.0f, 2.0f});
         tabel.setWidthPercentage(100);
         tabel.setSpacingBefore(14);
         tabel.setHeaderRows(1);
-        header(tabel, "Produk", Element.ALIGN_LEFT);
+        header(tabel, "Produk & Batch FEFO", Element.ALIGN_LEFT);
         header(tabel, "Qty", Element.ALIGN_CENTER);
-        header(tabel, "Harga Satuan", Element.ALIGN_RIGHT);
+        header(tabel, "Harga Normal", Element.ALIGN_RIGHT);
+        header(tabel, "Harga Deal/Tier", Element.ALIGN_RIGHT);
         header(tabel, "Subtotal", Element.ALIGN_RIGHT);
 
         BigDecimal subtotalBarang = BigDecimal.ZERO;
+        BigDecimal totalHargaNormal = BigDecimal.ZERO;
         for (OrderItem item : order.getItems()) {
             String nama = item.getProductBatch() != null && item.getProductBatch().getProduct() != null
                     ? item.getProductBatch().getProduct().getNamaProduk() : "(produk tidak diketahui)";
-            isi(tabel, nama, Element.ALIGN_LEFT);
-            isi(tabel, String.valueOf(item.getQuantity()), Element.ALIGN_CENTER);
-            isi(tabel, rupiah(item.getHargaSatuanSnapshot()), Element.ALIGN_RIGHT);
+            String kodeBatch = item.getProductBatch() != null ? item.getProductBatch().getIdProdBatch() : "-";
+            BigDecimal hargaNormal = (item.getProductBatch() != null && item.getProductBatch().getProduct() != null
+                    && item.getProductBatch().getProduct().getHargaEceran() != null)
+                    ? item.getProductBatch().getProduct().getHargaEceran()
+                    : item.getHargaSatuanSnapshot();
+            BigDecimal hargaFinal = item.getHargaSatuanSnapshot() != null
+                    ? item.getHargaSatuanSnapshot()
+                    : BigDecimal.ZERO;
+            int qty = item.getQuantity() != null ? item.getQuantity() : 0;
+
+            if (hargaNormal != null) {
+                totalHargaNormal = totalHargaNormal.add(hargaNormal.multiply(BigDecimal.valueOf(qty)));
+            }
+
+            String infoDiskon = "";
+            if (hargaNormal != null && hargaNormal.compareTo(BigDecimal.ZERO) > 0
+                    && hargaFinal.compareTo(hargaNormal) < 0) {
+                BigDecimal pct = hargaNormal.subtract(hargaFinal)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(hargaNormal, 0, java.math.RoundingMode.HALF_UP);
+                TieringPriceService.BatchPriceEvaluation batchEval = tieringPriceService.evaluateBatchPrice(
+                        item.getProductBatch().getProduct(), item.getProductBatch());
+                if (batchEval.isDealBatch() && hargaFinal.compareTo(batchEval.hargaEfektif()) == 0
+                        && batchEval.labelDeal() != null) {
+                    infoDiskon = "\n[" + batchEval.labelDeal() + "]";
+                } else {
+                    infoDiskon = "\n[Grosir/Diskon -" + pct.stripTrailingZeros().toPlainString() + "%]";
+                }
+            }
+
+            isi(tabel, nama + "\nBatch: " + kodeBatch + infoDiskon, Element.ALIGN_LEFT);
+            isi(tabel, String.valueOf(qty), Element.ALIGN_CENTER);
+            isi(tabel, rupiah(hargaNormal), Element.ALIGN_RIGHT);
+            isi(tabel, rupiah(hargaFinal), Element.ALIGN_RIGHT);
             isi(tabel, rupiah(item.getSubtotalItem()), Element.ALIGN_RIGHT);
             if (item.getSubtotalItem() != null) {
                 subtotalBarang = subtotalBarang.add(item.getSubtotalItem());
@@ -152,11 +186,16 @@ public class NotaPdfService {
         BigDecimal ongkir = (delivery != null && delivery.getOngkir() != null && !ongkirBelumPasti)
                 ? delivery.getOngkir() : BigDecimal.ZERO;
         BigDecimal total = subtotalBarang.add(ongkir);
+        BigDecimal totalHemat = totalHargaNormal.subtract(subtotalBarang);
 
-        PdfPTable ringkas = new PdfPTable(new float[]{3f, 2f});
-        ringkas.setWidthPercentage(55);
+        PdfPTable ringkas = new PdfPTable(new float[]{3.2f, 2f});
+        ringkas.setWidthPercentage(60);
         ringkas.setHorizontalAlignment(Element.ALIGN_RIGHT);
         ringkas.setSpacingBefore(8);
+        if (totalHemat.compareTo(BigDecimal.ZERO) > 0) {
+            barisBiaya(ringkas, "Total Harga Normal", rupiah(totalHargaNormal), F_ISI);
+            barisBiaya(ringkas, "Total Hemat (Diskon / Tiering)", "- " + rupiah(totalHemat), F_LABEL);
+        }
         barisBiaya(ringkas, "Subtotal Barang", rupiah(subtotalBarang), F_ISI);
         String labelOngkir = ongkirBelumPasti ? "Menunggu konfirmasi"
                 : (delivery == null ? "Belum ada data pengiriman"

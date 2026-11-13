@@ -35,6 +35,9 @@ public class InventoryController {
             String namaProduk,
             LocalDate tanggalExp,
             Integer stokOnline,
+            java.math.BigDecimal hargaEceran,
+            java.math.BigDecimal hargaOverride,
+            java.math.BigDecimal diskon,
             String pesan,
             Boolean isResolved,
             LocalDateTime createdAt
@@ -53,6 +56,9 @@ public class InventoryController {
                         a.getProductBatch().getProduct().getNamaProduk(),
                         a.getProductBatch().getTanggalExp(),
                         a.getProductBatch().getStokOnline(),
+                        a.getProductBatch().getProduct().getHargaEceran(),
+                        a.getProductBatch().getHargaOverride(),
+                        a.getProductBatch().getDiskon(),
                         a.getPesan(),
                         a.getIsResolved(),
                         a.getCreatedAt()
