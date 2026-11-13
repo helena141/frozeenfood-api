@@ -28,10 +28,27 @@ public class ProductCatalogResponse {
     private Boolean isClearance;
     private Integer stokClearance;
     private BigDecimal hargaClearance;
+    private BigDecimal hargaSetelahDiskon;
+    private BigDecimal diskonPersen;
+    private Long sisaHariExpired;
+    private String tipeDeal;
+    private String labelDeal;
     private LocalDate nearestExpDate;
     private List<TieringPriceItem> tieringPrices;
+    private List<BatchCatalogItem> activeBatches;
 
     public record TieringPriceItem(UUID idTiering, Integer minQty, Integer maxQty, BigDecimal hargaPerUnit) {}
+
+    public record BatchCatalogItem(
+            String idProdBatch,
+            Integer stokOnline,
+            LocalDate tanggalExp,
+            Long sisaHariExpired,
+            BigDecimal hargaEfektif,
+            BigDecimal diskonPersen,
+            Boolean isDeal,
+            String labelDeal
+    ) {}
 
     // Alias untuk kompatibilitas penuh dengan properti totalStokOnline di Frontend Next.js
     public Integer getTotalStokOnline() {

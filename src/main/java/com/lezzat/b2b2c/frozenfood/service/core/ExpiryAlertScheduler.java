@@ -25,6 +25,7 @@ public class ExpiryAlertScheduler {
     private static final int THRESHOLD_DAYS = 30;
     private static final int CLEARANCE_DAYS = 7;
     private static final BigDecimal CLEARANCE_DISCOUNT = new BigDecimal("50.00");
+    private static final BigDecimal NEAR_EXPIRY_DISCOUNT = new BigDecimal("20.00");
 
     // TESTING MODE: Jalan setiap pergantian menit (60 detik)
     @Scheduled(cron = "0 * * * * ?") 
@@ -42,22 +43,47 @@ public class ExpiryAlertScheduler {
         int alertCount = 0;
         for (ProductBatch batch : criticalBatches) {
             boolean isClearance = !batch.getTanggalExp().isAfter(clearanceDate);
-            if (isClearance && batch.getHargaOverride() == null
-                    && (batch.getDiskon() == null || batch.getDiskon().compareTo(CLEARANCE_DISCOUNT) != 0)) {
-                batch.setDiskon(CLEARANCE_DISCOUNT);
-                productBatchRepository.save(batch);
+            if (isClearance) {
+                if (batch.getHargaOverride() == null
+                        && (batch.getDiskon() == null || batch.getDiskon().compareTo(CLEARANCE_DISCOUNT) < 0)) {
+                    batch.setDiskon(CLEARANCE_DISCOUNT);
+                    productBatchRepository.save(batch);
+                }
+            } else {
+                // Opsi 1: Batch H-30 s/d H-8 otomatis dapat diskon FEFO Deal 20% jika belum diset Admin
+                if (batch.getHargaOverride() == null
+                        && (batch.getDiskon() == null || batch.getDiskon().compareTo(BigDecimal.ZERO) <= 0)) {
+                    batch.setDiskon(NEAR_EXPIRY_DISCOUNT);
+                    productBatchRepository.save(batch);
+                }
             }
 
-            if (!expiryAlertRepository.existsByProductBatchAndIsResolvedFalse(batch)) {
-                String prefix = isClearance ? "CLEARANCE 50%: " : "DARURAT: ";
+            BigDecimal effectiveDisc = batch.getDiskon() != null
+                    ? batch.getDiskon()
+                    : (isClearance ? CLEARANCE_DISCOUNT : NEAR_EXPIRY_DISCOUNT);
+            String prefix = isClearance
+                    ? "CLEARANCE " + effectiveDisc.stripTrailingZeros().toPlainString() + "%: "
+                    : "DARURAT (FEFO DEAL " + effectiveDisc.stripTrailingZeros().toPlainString() + "%): ";
+            String expectedMessage = prefix + "Produk " + batch.getProduct().getNamaProduk()
+                    + " (Batch: " + batch.getIdProdBatch() + ") kedaluwarsa pada " + batch.getTanggalExp();
+
+            var existingAlertOpt = expiryAlertRepository
+                    .findFirstByProductBatchAndIsResolvedFalseOrderByCreatedAtDesc(batch);
+
+            if (existingAlertOpt.isEmpty()) {
                 ExpiryAlert alert = ExpiryAlert.builder()
                         .productBatch(batch)
-                        .pesan(prefix + "Produk " + batch.getProduct().getNamaProduk() + " (Batch: " + batch.getIdProdBatch() + ") kedaluwarsa pada " + batch.getTanggalExp())
+                        .pesan(expectedMessage)
                         .build();
-                
+
                 expiryAlertRepository.save(alert);
                 alertCount++;
                 log.warn("⚠️ [ALERT DIBUAT] {}", alert.getPesan());
+            } else if (isClearance && !existingAlertOpt.get().getPesan().startsWith("CLEARANCE")) {
+                ExpiryAlert existingAlert = existingAlertOpt.get();
+                existingAlert.setPesan(expectedMessage);
+                expiryAlertRepository.save(existingAlert);
+                log.warn("⚠️ [ALERT DIPERBARUI KE CLEARANCE] {}", existingAlert.getPesan());
             }
         }
 

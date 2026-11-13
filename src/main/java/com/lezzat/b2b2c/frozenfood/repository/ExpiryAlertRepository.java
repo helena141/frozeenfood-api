@@ -1,6 +1,7 @@
 package com.lezzat.b2b2c.frozenfood.repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,8 @@ import com.lezzat.b2b2c.frozenfood.entity.ProductBatch;
 public interface ExpiryAlertRepository extends JpaRepository<ExpiryAlert, UUID> {
     // Cek apakah batch ini sudah punya alert yang belum diselesaikan
     boolean existsByProductBatchAndIsResolvedFalse(ProductBatch productBatch);
+
+    Optional<ExpiryAlert> findFirstByProductBatchAndIsResolvedFalseOrderByCreatedAtDesc(ProductBatch productBatch);
 
     @Query("SELECT a FROM ExpiryAlert a JOIN FETCH a.productBatch pb JOIN FETCH pb.product ORDER BY a.createdAt DESC")
     List<ExpiryAlert> findAllWithBatchAndProduct();

@@ -16,6 +16,7 @@ import com.lezzat.b2b2c.frozenfood.repository.ProductRepository;
 import com.lezzat.b2b2c.frozenfood.repository.TieringPriceRepository;
 import com.lezzat.b2b2c.frozenfood.service.PaymentService;
 import com.lezzat.b2b2c.frozenfood.service.ProductService;
+import com.lezzat.b2b2c.frozenfood.service.TieringPriceService;
 import com.lezzat.b2b2c.frozenfood.service.core.ExpiryAlertScheduler;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -58,17 +59,18 @@ class FrozenFoodApplicationTests {
                 TieringPrice.builder().idTiering(UUID.randomUUID()).minQty(10).maxQty(50).hargaPerUnit(new BigDecimal("35000.00")).build()
         ));
 
-        ProductService productService = new ProductService(productRepo, tieringRepo);
+        ProductBatchRepository batchRepo = mock(ProductBatchRepository.class);
+        TieringPriceService tieringPriceService = new TieringPriceService(tieringRepo, batchRepo);
+        ProductService productService = new ProductService(productRepo, tieringRepo, tieringPriceService);
         ProductCatalogResponse catalog = productService.getProductById("NGT-001");
         assertTrue(catalog.getIsClearance());
         assertEquals(10, catalog.getStokClearance());
         assertEquals(new BigDecimal("20000.00"), catalog.getHargaClearance());
         assertEquals(1, catalog.getTieringPrices().size());
 
-        ProductBatchRepository batchRepo = mock(ProductBatchRepository.class);
         ExpiryAlertRepository alertRepo = mock(ExpiryAlertRepository.class);
         when(batchRepo.findBatchesExpiringBefore(any())).thenReturn(List.of(clearanceBatch));
-        when(alertRepo.existsByProductBatchAndIsResolvedFalse(clearanceBatch)).thenReturn(false);
+        when(alertRepo.findFirstByProductBatchAndIsResolvedFalseOrderByCreatedAtDesc(clearanceBatch)).thenReturn(Optional.empty());
 
         new ExpiryAlertScheduler(batchRepo, alertRepo).scanAndGenerateExpiryAlerts();
         assertEquals(new BigDecimal("50.00"), clearanceBatch.getDiskon());

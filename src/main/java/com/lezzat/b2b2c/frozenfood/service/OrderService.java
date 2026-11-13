@@ -59,15 +59,14 @@ public class OrderService {
             );
 
             for (TieringPriceService.BatchDeduction deduction : checkoutResult.deductedBatches()) {
-                BigDecimal subtotalItem = checkoutResult.blendedUnitPrice()
-                        .multiply(BigDecimal.valueOf(deduction.quantityDeducted()))
-                        .setScale(2, RoundingMode.HALF_UP);
+                BigDecimal hargaSatuanBatch = deduction.rawUnitPrice();
+                BigDecimal subtotalItem = deduction.rawSubtotal();
 
                 OrderItem orderItem = OrderItem.builder()
                         .order(order)
                         .productBatch(deduction.batch())
                         .quantity(deduction.quantityDeducted())
-                        .hargaSatuanSnapshot(checkoutResult.blendedUnitPrice())
+                        .hargaSatuanSnapshot(hargaSatuanBatch)
                         .subtotalItem(subtotalItem)
                         .build();
 
@@ -121,14 +120,29 @@ public class OrderService {
 
     private OrderResponse toResponse(Order order) {
         List<OrderItemResponse> itemResponses = order.getItems().stream()
-                .map(item -> new OrderItemResponse(
-                        item.getIdOrderItem(),
-                        item.getProductBatch().getProduct().getIdProduk(),
-                        item.getProductBatch().getProduct().getNamaProduk(),
-                        item.getProductBatch().getIdProdBatch(),
-                        item.getQuantity(),
-                        item.getHargaSatuanSnapshot(),
-                        item.getSubtotalItem()))
+                .map(item -> {
+                    BigDecimal hargaAsli = item.getProductBatch().getProduct().getHargaEceran();
+                    BigDecimal hargaSnapshot = item.getHargaSatuanSnapshot();
+                    BigDecimal diskonPct = BigDecimal.ZERO;
+                    if (hargaAsli != null && hargaAsli.compareTo(BigDecimal.ZERO) > 0
+                            && hargaSnapshot != null && hargaSnapshot.compareTo(hargaAsli) < 0) {
+                        diskonPct = hargaAsli.subtract(hargaSnapshot)
+                                .multiply(BigDecimal.valueOf(100))
+                                .divide(hargaAsli, 0, RoundingMode.HALF_UP);
+                    }
+                    String ketPromo = resolveKeteranganPromo(item, hargaAsli, hargaSnapshot, diskonPct);
+                    return new OrderItemResponse(
+                            item.getIdOrderItem(),
+                            item.getProductBatch().getProduct().getIdProduk(),
+                            item.getProductBatch().getProduct().getNamaProduk(),
+                            item.getProductBatch().getIdProdBatch(),
+                            item.getQuantity(),
+                            hargaAsli,
+                            hargaSnapshot,
+                            diskonPct,
+                            ketPromo,
+                            item.getSubtotalItem());
+                })
                 .toList();
 
         return new OrderResponse(
@@ -141,5 +155,24 @@ public class OrderService {
                 order.getCatatan(),
                 itemResponses,
                 order.getCreatedAt());
+    }
+
+    private String resolveKeteranganPromo(
+            OrderItem item,
+            BigDecimal hargaAsli,
+            BigDecimal hargaSnapshot,
+            BigDecimal diskonPct) {
+        if (hargaAsli == null || hargaSnapshot == null || hargaSnapshot.compareTo(hargaAsli) >= 0) {
+            return "Harga Normal";
+        }
+        TieringPriceService.BatchPriceEvaluation batchEval = tieringPriceService.evaluateBatchPrice(
+                item.getProductBatch().getProduct(),
+                item.getProductBatch()
+        );
+        if (batchEval.isDealBatch() && hargaSnapshot.compareTo(batchEval.hargaEfektif()) == 0
+                && batchEval.labelDeal() != null) {
+            return batchEval.labelDeal();
+        }
+        return "Harga Grosir / Diskon (-" + diskonPct.stripTrailingZeros().toPlainString() + "%)";
     }
 }

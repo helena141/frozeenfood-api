@@ -25,6 +25,6 @@ lezzat:
     motor: { drivers: 2, max-weight-kg: 15, max-volume-liter: 40, avg-speed-kmh: 25, prep-minutes: 20, max-cold-chain-minutes: 60, queue-delay-minutes: 30 }
     schedule: { open: "09:00", close: "21:00", same-day-cutoff: "15:00", zone: Asia/Jakarta }
     routing: { enabled: false }
-    u unit: { weight-to-kg: 0.001, volume-to-liter: 0.001 }   # konversi berat (gram -> kg) & volume (ml -> liter)
+    unit: { weight-to-kg: 0.001, volume-to-liter: 0.001 }   # konversi berat (gram -> kg) & volume (ml -> liter)
   google:
     client-id: 2154905224-8fhgcefgb2nhbljsn687nunn94fji60l.apps.googleusercontent.com

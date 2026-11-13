@@ -33,11 +33,10 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private static final String UPLOAD_DIR = "uploads/products/";
-    private static final int CLEARANCE_DAYS_THRESHOLD = 7;
-    private static final BigDecimal CLEARANCE_MULTIPLIER = new BigDecimal("0.50");
 
     private final ProductRepository productRepository;
     private final TieringPriceRepository tieringPriceRepository;
+    private final TieringPriceService tieringPriceService;
 
     @Transactional
     public ProductCatalogResponse createProduct(ProductRequest request) {
@@ -218,7 +217,11 @@ public class ProductService {
         int stokClearance = 0;
         LocalDate nearestExpDate = null;
         BigDecimal hargaClearance = null;
-        LocalDate clearanceCutoff = LocalDate.now().plusDays(CLEARANCE_DAYS_THRESHOLD);
+        BigDecimal diskonPersen = BigDecimal.ZERO;
+        Long sisaHariExpired = null;
+        String tipeDeal = null;
+        String labelDeal = null;
+        List<ProductCatalogResponse.BatchCatalogItem> batchCatalogItems = new java.util.ArrayList<>();
 
         if (product.getProductBatches() != null) {
             List<ProductBatch> activeBatches = product.getProductBatches().stream()
@@ -228,15 +231,33 @@ public class ProductService {
 
             for (ProductBatch batch : activeBatches) {
                 totalAvailableStock += batch.getStokOnline();
+                TieringPriceService.BatchPriceEvaluation eval = tieringPriceService.evaluateBatchPrice(product, batch);
+
+                batchCatalogItems.add(new ProductCatalogResponse.BatchCatalogItem(
+                        batch.getIdProdBatch(),
+                        batch.getStokOnline(),
+                        batch.getTanggalExp(),
+                        eval.sisaHariExpired(),
+                        eval.hargaEfektif(),
+                        eval.diskonPersen(),
+                        eval.isDealBatch(),
+                        eval.labelDeal()
+                ));
+
                 if (nearestExpDate == null) {
                     nearestExpDate = batch.getTanggalExp();
+                    sisaHariExpired = eval.sisaHariExpired();
                 }
-                if (!batch.getTanggalExp().isAfter(clearanceCutoff)) {
+
+                if (eval.isDealBatch()) {
                     stokClearance += batch.getStokOnline();
                     if (hargaClearance == null) {
-                        hargaClearance = batch.getHargaOverride() != null
-                                ? batch.getHargaOverride()
-                                : product.getHargaEceran().multiply(CLEARANCE_MULTIPLIER).setScale(2, RoundingMode.HALF_UP);
+                        hargaClearance = eval.hargaEfektif();
+                        diskonPersen = eval.diskonPersen();
+                        sisaHariExpired = eval.sisaHariExpired();
+                        tipeDeal = eval.tipeDeal();
+                        labelDeal = eval.labelDeal();
+                        nearestExpDate = batch.getTanggalExp();
                     }
                 }
             }
@@ -259,11 +280,17 @@ public class ProductService {
                 .gambar(product.getGambar())
                 .isActive(product.getIsActive())
                 .totalStock(totalAvailableStock)
-                .isClearance(stokClearance > 0)
+                .isClearance(stokClearance > 0 && hargaClearance != null)
                 .stokClearance(stokClearance)
                 .hargaClearance(hargaClearance)
+                .hargaSetelahDiskon(hargaClearance)
+                .diskonPersen(diskonPersen)
+                .sisaHariExpired(sisaHariExpired)
+                .tipeDeal(tipeDeal)
+                .labelDeal(labelDeal)
                 .nearestExpDate(nearestExpDate)
                 .tieringPrices(tieringItems)
+                .activeBatches(batchCatalogItems)
                 .build();
     }
 }
