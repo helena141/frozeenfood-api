@@ -3,6 +3,7 @@ package com.lezzat.b2b2c.frozenfood.controller;
 import com.lezzat.b2b2c.frozenfood.dto.request.ProductRequest;
 import com.lezzat.b2b2c.frozenfood.dto.response.ProductCatalogResponse;
 import com.lezzat.b2b2c.frozenfood.service.ProductService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -40,7 +41,7 @@ public class ProductController {
     }
 
     @PostMapping
-    public ResponseEntity<ProductCatalogResponse> createProduct(@RequestBody ProductRequest request) {
+    public ResponseEntity<ProductCatalogResponse> createProduct(@Valid @RequestBody ProductRequest request) {
         return new ResponseEntity<>(productService.createProduct(request), HttpStatus.CREATED);
     }
 
@@ -48,7 +49,7 @@ public class ProductController {
     @PutMapping("/{id}")
     public ResponseEntity<ProductCatalogResponse> updateProduct(
             @PathVariable String id, 
-            @RequestBody ProductRequest request) {
+            @Valid @RequestBody ProductRequest request) {
         return ResponseEntity.ok(productService.updateProduct(id, request));
     }
 

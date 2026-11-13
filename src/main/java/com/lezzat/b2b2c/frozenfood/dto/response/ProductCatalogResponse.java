@@ -20,6 +20,8 @@ public class ProductCatalogResponse {
     private String deskripsiProduk;
     private String kategori;
     private BigDecimal hargaEceran;
+    private BigDecimal hargaBeli;
+    private BigDecimal keuntungan;
     private BigDecimal berat;
     private BigDecimal volume;
     private String gambar;

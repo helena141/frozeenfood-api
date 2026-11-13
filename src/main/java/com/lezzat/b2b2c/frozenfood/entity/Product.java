@@ -7,6 +7,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,6 +41,14 @@ public class Product {
     @Column(name = "harga_eceran", nullable = false, precision = 15, scale = 2)
     private BigDecimal hargaEceran;
 
+    @Builder.Default
+    @Column(name = "harga_beli", precision = 15, scale = 2)
+    private BigDecimal hargaBeli = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "keuntungan", precision = 15, scale = 2)
+    private BigDecimal keuntungan = BigDecimal.ZERO;
+
     @Column(name = "berat", nullable = false, precision = 10, scale = 2)
     private BigDecimal berat;
 
@@ -63,4 +73,17 @@ public class Product {
     
     @OneToMany(mappedBy = "product", fetch = jakarta.persistence.FetchType.LAZY)
     private java.util.List<ProductBatch> productBatches;
+
+    @PrePersist
+    @PreUpdate
+    public void calculateKeuntungan() {
+        if (this.hargaBeli == null) {
+            this.hargaBeli = BigDecimal.ZERO;
+        }
+        if (this.hargaEceran != null) {
+            this.keuntungan = this.hargaEceran.subtract(this.hargaBeli);
+        } else {
+            this.keuntungan = BigDecimal.ZERO;
+        }
+    }
 }

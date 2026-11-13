@@ -52,12 +52,18 @@ public class ProductService {
         String customId = generateProductId(request.getKategori());
 
         // 3. Mapping dari DTO ke Entity Product
+        BigDecimal hargaEceran = request.getHargaEceran() != null ? request.getHargaEceran() : BigDecimal.ZERO;
+        BigDecimal hargaBeli = request.getHargaBeli() != null ? request.getHargaBeli() : BigDecimal.ZERO;
+        BigDecimal keuntungan = hargaEceran.subtract(hargaBeli);
+
         Product product = Product.builder()
                 .idProduk(customId)
                 .namaProduk(request.getNamaProduk())
                 .deskripsiProduk(request.getDeskripsiProduk())
                 .kategori(request.getKategori())
                 .hargaEceran(request.getHargaEceran())
+                .hargaBeli(hargaBeli)
+                .keuntungan(keuntungan)
                 .berat(request.getBerat())
                 .volume(request.getVolume())
                 .gambar(request.getGambar())
@@ -76,10 +82,16 @@ public class ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Produk tidak ditemukan dengan ID: " + id));
 
+        BigDecimal hargaEceran = request.getHargaEceran() != null ? request.getHargaEceran() : BigDecimal.ZERO;
+        BigDecimal hargaBeli = request.getHargaBeli() != null ? request.getHargaBeli() : BigDecimal.ZERO;
+        BigDecimal keuntungan = hargaEceran.subtract(hargaBeli);
+
         product.setNamaProduk(request.getNamaProduk());
         product.setDeskripsiProduk(request.getDeskripsiProduk());
         product.setKategori(request.getKategori());
         product.setHargaEceran(request.getHargaEceran());
+        product.setHargaBeli(hargaBeli);
+        product.setKeuntungan(keuntungan);
         product.setBerat(request.getBerat());
         product.setVolume(request.getVolume());
         product.setGambar(request.getGambar());
@@ -248,12 +260,20 @@ public class ProductService {
                         t.getIdTiering(), t.getMinQty(), t.getMaxQty(), t.getHargaPerUnit()))
                 .toList();
 
+        BigDecimal hargaEceran = product.getHargaEceran() != null ? product.getHargaEceran() : BigDecimal.ZERO;
+        BigDecimal hargaBeli = product.getHargaBeli() != null ? product.getHargaBeli() : BigDecimal.ZERO;
+        BigDecimal keuntungan = product.getKeuntungan() != null
+                ? product.getKeuntungan()
+                : hargaEceran.subtract(hargaBeli);
+
         return ProductCatalogResponse.builder()
                 .idProduk(product.getIdProduk())
                 .namaProduk(product.getNamaProduk())
                 .deskripsiProduk(product.getDeskripsiProduk())
                 .kategori(product.getKategori())
                 .hargaEceran(product.getHargaEceran())
+                .hargaBeli(hargaBeli)
+                .keuntungan(keuntungan)
                 .berat(product.getBerat())
                 .volume(product.getVolume())
                 .gambar(product.getGambar())

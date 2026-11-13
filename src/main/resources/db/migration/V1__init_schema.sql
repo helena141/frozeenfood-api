@@ -53,6 +53,8 @@ CREATE TABLE products (
     deskripsi_produk TEXT,
     kategori VARCHAR(100) NOT NULL,
     harga_eceran NUMERIC(15, 2) NOT NULL CHECK (harga_eceran >= 0),
+    harga_beli NUMERIC(15, 2) DEFAULT 0,
+    keuntungan NUMERIC(15, 2) DEFAULT 0,
     berat DECIMAL(10, 2) NOT NULL CHECK (berat > 0),
     volume DECIMAL(10, 2),
     gambar TEXT,

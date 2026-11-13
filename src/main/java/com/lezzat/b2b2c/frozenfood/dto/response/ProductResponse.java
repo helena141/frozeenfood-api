@@ -10,6 +10,8 @@ public record ProductResponse(
         String deskripsiProduk,
         String kategori,
         BigDecimal hargaEceran,
+        BigDecimal hargaBeli,
+        BigDecimal keuntungan,
         BigDecimal berat,
         BigDecimal volume,
         String gambar,  
@@ -18,4 +20,35 @@ public record ProductResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
+    public ProductResponse(
+            String idProduk,
+            String namaProduk,
+            String deskripsiProduk,
+            String kategori,
+            BigDecimal hargaEceran,
+            BigDecimal berat,
+            BigDecimal volume,
+            String gambar,
+            Boolean isActive,
+            Integer totalStokOnline,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(
+                idProduk,
+                namaProduk,
+                deskripsiProduk,
+                kategori,
+                hargaEceran,
+                BigDecimal.ZERO,
+                hargaEceran != null ? hargaEceran : BigDecimal.ZERO,
+                berat,
+                volume,
+                gambar,
+                isActive,
+                totalStokOnline,
+                createdAt,
+                updatedAt
+        );
+    }
 }
